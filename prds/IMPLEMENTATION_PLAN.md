@@ -164,79 +164,79 @@
 > 依賴：Phase 1（requester FK）、Phase 2（experiment_types M2M）
 
 ### 4.1 Request Model
-- [ ] 定義 `RequestStatus` enum（11 個狀態）
-- [ ] 定義 `Request` model
-- [ ] 定義 `RequestExperiment` through model
-- [ ] 執行 migration
+- [x] 定義 `RequestStatus` enum（11 個狀態）
+- [x] 定義 `Request` model
+- [x] 定義 `RequestExperiment` through model
+- [x] 執行 migration
 
 ### 4.2 Request Model Tests
-- [ ] 測試建立 Request（草稿）
-- [ ] 測試 RequestExperiment M2M with parameters
-- [ ] 測試 status 預設為 draft
+- [x] 測試建立 Request（草稿）
+- [x] 測試 RequestExperiment M2M with parameters
+- [x] 測試 status 預設為 draft
 
 ### 4.3 Sample Model
-- [ ] 定義 `SampleStatus` enum（9 個狀態）
-- [ ] 定義 `WaferSize` enum
-- [ ] 定義 `Sample` model
-- [ ] 定義 `ApprovalLog` model
-- [ ] 執行 migration
+- [x] 定義 `SampleStatus` enum（10 個狀態，含 `lost`）
+- [x] 定義 `WaferSize` enum
+- [x] 定義 `Sample` model
+- [x] 定義 `ApprovalLog` model
+- [x] 執行 migration
 
 ### 4.4 Sample Model Tests
-- [ ] 測試建立 Sample
-- [ ] 測試 wafer_id + request unique_together 約束
-- [ ] 測試 WaferSize choices
-- [ ] 測試 ApprovalLog 建立與排序
+- [x] 測試建立 Sample
+- [x] 測試 wafer_id + request unique_together 約束
+- [x] 測試 WaferSize choices
+- [x] 測試 ApprovalLog 建立與排序
 
 ### 4.5 狀態機邏輯
-- [ ] 實作 Request 狀態轉移驗證方法
-- [ ] 實作 Sample 狀態轉移驗證方法
+- [x] 實作 Request 狀態轉移驗證方法
+- [x] 實作 Sample 狀態轉移驗證方法
 
 ### 4.6 狀態機 Tests
-- [ ] 測試 Request 合法狀態轉移（draft → pending_approval → approved → ...）
-- [ ] 測試 Request 非法狀態轉移（e.g. draft → in_progress 應拒絕）
-- [ ] 測試 Sample 合法狀態轉移
-- [ ] 測試 Sample 非法狀態轉移
-- [ ] 測試 submit 時自動建立 Sample entity
-- [ ] 測試所有樣品接收後 Request 自動轉 in_progress
+- [x] 測試 Request 合法狀態轉移（draft → pending_approval → approved → ...）
+- [x] 測試 Request 非法狀態轉移（e.g. draft → in_progress 應拒絕）
+- [x] 測試 Sample 合法狀態轉移
+- [x] 測試 Sample 非法狀態轉移
+- [-] 測試 submit 時自動建立 Sample entity（設計調整：Sample 在建立委託單時即建立，非送出時）
+- [x] 測試所有樣品接收後 Request 自動轉 in_progress（在 tests_api.py 的 TestSampleReceive 中覆蓋）
 
 ### 4.7 Schema
-- [ ] `RequestIn` / `RequestOut` schema（含巢狀 samples, experiment_types）
-- [ ] `RequestUpdateIn` schema（草稿/退回狀態修改用）
-- [ ] `SampleOut` schema
-- [ ] `ApprovalIn` / `ApprovalOut` schema
+- [x] `RequestIn` / `RequestOut` schema（含巢狀 samples, experiment_types）
+- [x] `RequestUpdateIn` schema（草稿/退回狀態修改用）
+- [x] `SampleOut` schema
+- [x] `ApprovalIn` / `ApprovalOut` schema
 
 ### 4.8 Request API Tests
-- [ ] `GET /api/requests/` — 列表（Fab User 只看自己的）
-- [ ] `POST /api/requests/` — 建立草稿
-- [ ] `GET /api/requests/{id}` — 詳情（含 samples, approval_logs）
-- [ ] `PATCH /api/requests/{id}` — 修改（僅 draft/returned）
-- [ ] `POST /api/requests/{id}/submit` — 送出
-- [ ] `POST /api/requests/{id}/approve` — 核准
-- [ ] `POST /api/requests/{id}/return` — 退回（需 comment）
-- [ ] `POST /api/requests/{id}/reject` — 拒絕（需 comment）
-- [ ] `POST /api/requests/{id}/ship` — 送樣
-- [ ] `POST /api/requests/{id}/cancel` — 取消（需 reason）
-- [ ] `POST /api/requests/{id}/close` — 結單
-- [ ] 權限驗證：各操作的角色限制
+- [x] `GET /api/requests/` — 列表（Fab User 只看自己的）
+- [x] `POST /api/requests/` — 建立草稿
+- [x] `GET /api/requests/{id}` — 詳情（含 samples, approval_logs）
+- [x] `PATCH /api/requests/{id}` — 修改（僅 draft/returned）
+- [x] `POST /api/requests/{id}/submit` — 送出
+- [x] `POST /api/requests/{id}/approve` — 核准
+- [x] `POST /api/requests/{id}/return` — 退回（需 comment）
+- [x] `POST /api/requests/{id}/reject` — 拒絕（需 comment）
+- [x] `POST /api/requests/{id}/ship` — 送樣
+- [x] `POST /api/requests/{id}/cancel` — 取消（需 reason）
+- [x] `POST /api/requests/{id}/close` — 結單
+- [x] 權限驗證：各操作的角色限制
 
 ### 4.9 Sample API Tests
-- [ ] `GET /api/samples/` — 列表（按 request_id, status 篩選）
-- [ ] `GET /api/samples/{id}` — 詳情（含 WIP 資訊）
-- [ ] `POST /api/samples/{id}/receive` — 確認接樣
-- [ ] `POST /api/samples/{id}/reject-receiving` — 料不符
-- [ ] `POST /api/samples/{id}/report-lost` — 送樣遺失
-- [ ] `POST /api/samples/{id}/void` — 作廢
-- [ ] `POST /api/samples/{id}/return` — 退回
+- [x] `GET /api/samples/` — 列表（按 request_id, status 篩選）
+- [x] `GET /api/samples/{id}` — 詳情（含所屬委託單資訊）
+- [x] `POST /api/samples/{id}/receive` — 確認接樣
+- [x] `POST /api/samples/{id}/reject-receiving` — 料不符
+- [x] `POST /api/samples/{id}/report-lost` — 送樣遺失
+- [x] `POST /api/samples/{id}/void` — 作廢
+- [x] `POST /api/samples/{id}/return` — 退回
 
 ### 4.10 API 實作
-- [ ] 實作 requests router（含所有 action endpoints）
-- [ ] 實作 samples router
-- [ ] 所有測試 green
+- [x] 實作 requests router（含所有 action endpoints）
+- [x] 實作 samples router
+- [x] 所有測試 green
 
 ### 4.11 Factory
-- [ ] 建立 `RequestFactory`（含 samples 和 experiment_types）
-- [ ] 建立 `SampleFactory`
-- [ ] 建立 `ApprovalLogFactory`
+- [x] 建立 `RequestFactory`
+- [x] 建立 `SampleFactory`
+- [x] 建立 `ApprovalLogFactory`（含 `RequestExperimentFactory`）
 
 ---
 

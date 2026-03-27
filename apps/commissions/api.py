@@ -1,5 +1,7 @@
 """Django Ninja routers for commission request and sample endpoints."""
 
+from collections.abc import Callable
+
 from django.contrib.auth.models import User
 from django.db import models, transaction
 from django.db.models import Prefetch
@@ -103,6 +105,74 @@ def _get_sample_for_user(sample_id: int, request: HttpRequest) -> Sample | None:
         return qs.get(pk=sample_id)
     except Sample.DoesNotExist:
         return None
+
+
+def _check_all_samples_received(req: Request) -> None:
+    """If all samples in a sample_shipped request are genuinely received,
+    auto-transition the request to in_progress.
+
+    Only counts samples in RECEIVED, SPLIT, or COMPLETED as "received".
+    Samples in exception/lost/voided/returned states do NOT count.
+
+    Caller must hold a lock on the request row (select_for_update).
+    """
+    if req.status != RequestStatus.SAMPLE_SHIPPED:
+        return
+
+    received_statuses = {
+        SampleStatus.RECEIVED,
+        SampleStatus.SPLIT,
+        SampleStatus.COMPLETED,
+    }
+    total = req.samples.count()
+    received_count = req.samples.filter(status__in=received_statuses).count()
+
+    if total > 0 and received_count == total:
+        req.status = RequestStatus.IN_PROGRESS
+        req.save()
+
+
+def _lab_sample_action(
+    request: HttpRequest,
+    sample_id: int,
+    action: str,
+    pre_save: Callable[[Sample], None] | None = None,
+    post_save_in_txn: Callable[[Sample], None] | None = None,
+) -> tuple[int, SampleDetailOut | dict]:
+    """Shared logic for lab-only sample state transitions.
+
+    Handles permission check, 404, atomic transaction, state validation, and
+    save.  Optional callbacks allow callers to inject per-action behaviour:
+    - pre_save: mutate the sample before save (e.g. append a note)
+    - post_save_in_txn: run additional DB work inside the same transaction
+      after the sample is saved (e.g. auto-transition the parent request)
+    """
+    if not has_lab_role(request):
+        return 403, {"detail": "Permission denied"}
+
+    try:
+        sample = Sample.objects.select_related("request").get(pk=sample_id)
+    except Sample.DoesNotExist:
+        return 404, {"detail": "Not found"}
+
+    with transaction.atomic():
+        sample = Sample.objects.select_for_update().get(pk=sample.pk)
+
+        try:
+            target = validate_sample_transition(sample.status, action)
+        except InvalidTransitionError as e:
+            return 400, {"detail": str(e)}
+
+        sample.status = target
+        if pre_save:
+            pre_save(sample)
+        sample.save()
+
+        if post_save_in_txn:
+            post_save_in_txn(sample)
+
+    sample = Sample.objects.select_related("request").get(pk=sample.pk)
+    return 200, SampleDetailOut.from_sample(sample)
 
 
 # =============================================================================
@@ -478,31 +548,14 @@ def get_sample(request: HttpRequest, sample_id: int):
 )
 def receive_sample(request: HttpRequest, sample_id: int):
     """Confirm sample receipt. Only lab staff/managers allowed."""
-    if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
 
-    try:
-        sample = Sample.objects.select_related("request").get(pk=sample_id)
-    except Sample.DoesNotExist:
-        return 404, {"detail": "Not found"}
-
-    with transaction.atomic():
-        sample = Sample.objects.select_for_update().get(pk=sample.pk)
-
-        try:
-            target = validate_sample_transition(sample.status, "receive")
-        except InvalidTransitionError as e:
-            return 400, {"detail": str(e)}
-
-        sample.status = target
-        sample.save()
-
-        # Lock the request row and check if all samples are received
+    def post_save_in_txn(sample: Sample) -> None:
         req = Request.objects.select_for_update().get(pk=sample.request_id)
         _check_all_samples_received(req)
 
-    sample = Sample.objects.select_related("request").get(pk=sample.pk)
-    return 200, SampleDetailOut.from_sample(sample)
+    return _lab_sample_action(
+        request, sample_id, "receive", post_save_in_txn=post_save_in_txn
+    )
 
 
 @sample_router.post(
@@ -513,29 +566,12 @@ def reject_receiving_sample(
     request: HttpRequest, sample_id: int, payload: ReasonOptionalIn
 ):
     """Mark sample as receiving exception. Only lab staff/managers allowed."""
-    if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
 
-    try:
-        sample = Sample.objects.select_related("request").get(pk=sample_id)
-    except Sample.DoesNotExist:
-        return 404, {"detail": "Not found"}
-
-    with transaction.atomic():
-        sample = Sample.objects.select_for_update().get(pk=sample.pk)
-
-        try:
-            target = validate_sample_transition(sample.status, "reject_receiving")
-        except InvalidTransitionError as e:
-            return 400, {"detail": str(e)}
-
-        sample.status = target
+    def pre_save(sample: Sample) -> None:
         if payload.reason:
             sample.note = f"{sample.note}\n[Reject] {payload.reason}".strip()
-        sample.save()
 
-    sample = Sample.objects.select_related("request").get(pk=sample.pk)
-    return 200, SampleDetailOut.from_sample(sample)
+    return _lab_sample_action(request, sample_id, "reject_receiving", pre_save=pre_save)
 
 
 @sample_router.post(
@@ -544,27 +580,7 @@ def reject_receiving_sample(
 )
 def report_lost_sample(request: HttpRequest, sample_id: int):
     """Mark sample as lost. Only lab staff/managers allowed."""
-    if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
-
-    try:
-        sample = Sample.objects.select_related("request").get(pk=sample_id)
-    except Sample.DoesNotExist:
-        return 404, {"detail": "Not found"}
-
-    with transaction.atomic():
-        sample = Sample.objects.select_for_update().get(pk=sample.pk)
-
-        try:
-            target = validate_sample_transition(sample.status, "report_lost")
-        except InvalidTransitionError as e:
-            return 400, {"detail": str(e)}
-
-        sample.status = target
-        sample.save()
-
-    sample = Sample.objects.select_related("request").get(pk=sample.pk)
-    return 200, SampleDetailOut.from_sample(sample)
+    return _lab_sample_action(request, sample_id, "report_lost")
 
 
 @sample_router.post(
@@ -573,27 +589,7 @@ def report_lost_sample(request: HttpRequest, sample_id: int):
 )
 def void_sample(request: HttpRequest, sample_id: int):
     """Void a sample (from exception/lost states). Only lab staff/managers allowed."""
-    if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
-
-    try:
-        sample = Sample.objects.select_related("request").get(pk=sample_id)
-    except Sample.DoesNotExist:
-        return 404, {"detail": "Not found"}
-
-    with transaction.atomic():
-        sample = Sample.objects.select_for_update().get(pk=sample.pk)
-
-        try:
-            target = validate_sample_transition(sample.status, "void")
-        except InvalidTransitionError as e:
-            return 400, {"detail": str(e)}
-
-        sample.status = target
-        sample.save()
-
-    sample = Sample.objects.select_related("request").get(pk=sample.pk)
-    return 200, SampleDetailOut.from_sample(sample)
+    return _lab_sample_action(request, sample_id, "void")
 
 
 @sample_router.post(
@@ -602,54 +598,4 @@ def void_sample(request: HttpRequest, sample_id: int):
 )
 def return_sample(request: HttpRequest, sample_id: int):
     """Return a sample (from exception states). Only lab staff/managers allowed."""
-    if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
-
-    try:
-        sample = Sample.objects.select_related("request").get(pk=sample_id)
-    except Sample.DoesNotExist:
-        return 404, {"detail": "Not found"}
-
-    with transaction.atomic():
-        sample = Sample.objects.select_for_update().get(pk=sample.pk)
-
-        try:
-            target = validate_sample_transition(sample.status, "return")
-        except InvalidTransitionError as e:
-            return 400, {"detail": str(e)}
-
-        sample.status = target
-        sample.save()
-
-    sample = Sample.objects.select_related("request").get(pk=sample.pk)
-    return 200, SampleDetailOut.from_sample(sample)
-
-
-# =============================================================================
-# Auto-transition helpers
-# =============================================================================
-
-
-def _check_all_samples_received(req: Request) -> None:
-    """If all samples in a sample_shipped request are genuinely received,
-    auto-transition the request to in_progress.
-
-    Only counts samples in RECEIVED, SPLIT, or COMPLETED as "received".
-    Samples in exception/lost/voided/returned states do NOT count.
-
-    Caller must hold a lock on the request row (select_for_update).
-    """
-    if req.status != RequestStatus.SAMPLE_SHIPPED:
-        return
-
-    received_statuses = {
-        SampleStatus.RECEIVED,
-        SampleStatus.SPLIT,
-        SampleStatus.COMPLETED,
-    }
-    total = req.samples.count()
-    received_count = req.samples.filter(status__in=received_statuses).count()
-
-    if total > 0 and received_count == total:
-        req.status = RequestStatus.IN_PROGRESS
-        req.save()
+    return _lab_sample_action(request, sample_id, "return")

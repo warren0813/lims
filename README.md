@@ -114,11 +114,11 @@ uv run pre-commit install
 
 | Phase | 內容 | 狀態 |
 |-------|------|------|
-| Phase 0 | 基礎建設（Django 設定、CI、Lint） | 完成 |
-| Phase 1 | accounts — 使用者與角色 | 進行中 |
-| Phase 2 | experiments — 實驗項目 | 待開始 |
-| Phase 3 | equipment — 機台與 Recipe | 待開始 |
-| Phase 4 | commissions — 委託單與樣品 | 待開始 |
+| Phase 0 | 基礎建設（Django 設定、CI、Lint） | 完成 ✓ |
+| Phase 1 | accounts — 使用者與角色 | 完成 ✓ |
+| Phase 2 | experiments — 實驗項目 | 完成 ✓ |
+| Phase 3 | equipment — 機台與 Recipe | 完成 ✓ |
+| Phase 4 | commissions — 委託單與樣品 | 完成 ✓ |
 | Phase 5 | wip — WIP 派貨與結單 | 待開始 |
 | Phase 6 | reports — 統計報表 | 待開始 |
 | Phase 7 | 整合測試與收尾 | 待開始 |
