@@ -29,6 +29,7 @@ class SampleStatus(models.TextChoices):
     SPLIT = "split", "已分貨"
     PROCESSING_EXCEPTION = "processing_exception", "處理異常"
     COMPLETED = "completed", "已完成"
+    LOST = "lost", "送樣遺失"
     RETURNED = "returned", "已退回"
     VOIDED = "voided", "已作廢"
 

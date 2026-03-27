@@ -125,6 +125,27 @@ class TestSample:
         assert WaferSize.SIZE_200MM == "200mm"
         assert WaferSize.SIZE_300MM == "300mm"
 
+    def test_sample_status_lost(self, user):
+        """Sample can be set to LOST status."""
+        from apps.commissions.models import Request, Sample, SampleStatus, WaferSize
+
+        req = Request.objects.create(title="遺失測試", requester=user)
+        sample = Sample.objects.create(
+            request=req,
+            wafer_id="WF-LOST-001",
+            wafer_size=WaferSize.SIZE_300MM,
+            status=SampleStatus.LOST,
+        )
+
+        assert sample.status == SampleStatus.LOST
+        assert SampleStatus.LOST.value == "lost"
+
+    def test_sample_status_choices_count(self):
+        """SampleStatus has exactly 10 states."""
+        from apps.commissions.models import SampleStatus
+
+        assert len(SampleStatus.choices) == 10
+
     def test_sample_db_table_name(self):
         """Database table name is sample."""
         from apps.commissions.models import Sample
