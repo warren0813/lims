@@ -14,7 +14,7 @@ class UserProfileInline(StackedInline):
     fields = ("role", "department")
 
 
-class UserAdmin(ModelAdmin, BaseUserAdmin):
+class UserAdmin(BaseUserAdmin, ModelAdmin):
     inlines = (UserProfileInline,)
     list_display = ("username", "email", "get_role", "get_department", "is_staff")
     list_select_related = ("profile",)
