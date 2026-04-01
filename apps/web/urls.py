@@ -126,6 +126,22 @@ urlpatterns = [
         views.dispatch_abort,
         name="dispatch-abort",
     ),
+    # ── Dashboard chart partials (HTMX) ──────────────────────────────────
+    path(
+        "dashboard/charts/tat/",
+        views.dashboard_chart_tat,
+        name="dashboard-chart-tat",
+    ),
+    path(
+        "dashboard/charts/workload/",
+        views.dashboard_chart_workload,
+        name="dashboard-chart-workload",
+    ),
+    path(
+        "dashboard/charts/capacity/",
+        views.dashboard_chart_capacity,
+        name="dashboard-chart-capacity",
+    ),
     # ── HTMX helpers ──────────────────────────────────────────────────────
     path("htmx/recipes/", views.recipes_for_equipment, name="htmx-recipes"),
     # ── LAB_STAFF/MANAGER: equipment ──────────────────────────────────────

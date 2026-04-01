@@ -1,0 +1,158 @@
+<script id="capacity-chart-data" type="application/json">{{ chart_json|safe }}</script>
+<div x-data="capacityChart()" x-init="init()" class="relative h-72">
+  <canvas id="capacity-chart-canvas"></canvas>
+</div>
+
+<script>
+function capacityChart() {
+  return {
+    chart: null,
+    init() {
+      const existing = Chart.getChart('capacity-chart-canvas');
+      if (existing) existing.destroy();
+
+      const raw = JSON.parse(document.getElementById('capacity-chart-data').textContent);
+      const canvas = document.getElementById('capacity-chart-canvas');
+      const ctx = canvas.getContext('2d');
+
+      const gradBlue = ctx.createLinearGradient(0, 0, 0, 280);
+      gradBlue.addColorStop(0, 'rgba(59, 130, 246, 0.15)');
+      gradBlue.addColorStop(1, 'rgba(59, 130, 246, 0)');
+
+      const gradPurple = ctx.createLinearGradient(0, 0, 0, 280);
+      gradPurple.addColorStop(0, 'rgba(168, 85, 247, 0.12)');
+      gradPurple.addColorStop(1, 'rgba(168, 85, 247, 0)');
+
+      const sharedPoint = {
+        pointRadius: 0,
+        pointHoverRadius: 6,
+        pointHoverBackgroundColor: '#fff',
+        pointHoverBorderWidth: 2.5,
+        borderWidth: 2.5,
+        tension: 0.45,
+        fill: true,
+      };
+
+      this.chart = new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: raw.labels,
+          datasets: [
+            {
+              ...sharedPoint,
+              label: '每日派工量',
+              data: raw.throughput,
+              borderColor: '#3b82f6',
+              backgroundColor: gradBlue,
+              pointHoverBorderColor: '#3b82f6',
+              yAxisID: 'y',
+            },
+            {
+              ...sharedPoint,
+              label: '設備稼動率 (%)',
+              data: raw.utilization_pct,
+              borderColor: '#a855f7',
+              backgroundColor: gradPurple,
+              pointHoverBorderColor: '#a855f7',
+              yAxisID: 'y2',
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 700, easing: 'easeInOutQuart' },
+          layout: { padding: { top: 8, right: 4, bottom: 0, left: 0 } },
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: {
+              position: 'top',
+              align: 'end',
+              labels: {
+                color: '#64748b',
+                font: { size: 12, family: "'Inter', sans-serif" },
+                usePointStyle: true,
+                pointStyle: 'circle',
+                boxWidth: 7,
+                boxHeight: 7,
+                padding: 16,
+              }
+            },
+            tooltip: {
+              backgroundColor: 'rgba(15, 23, 42, 0.88)',
+              titleColor: '#f1f5f9',
+              bodyColor: '#94a3b8',
+              padding: { x: 14, y: 10 },
+              cornerRadius: 10,
+              titleFont: { size: 12, weight: '600', family: "'Inter', sans-serif" },
+              bodyFont: { size: 12, family: "'Inter', sans-serif" },
+              borderColor: 'rgba(255,255,255,0.07)',
+              borderWidth: 1,
+              boxWidth: 8,
+              boxHeight: 8,
+              boxPadding: 4,
+              callbacks: {
+                title: items => {
+                  const d = new Date(items[0].label + 'T00:00:00');
+                  return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+                },
+                label: ctx => {
+                  if (ctx.datasetIndex === 1) return ` 稼動率：${ctx.parsed.y}%`;
+                  return ` 派工量：${ctx.parsed.y}`;
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              type: 'linear',
+              position: 'left',
+              beginAtZero: true,
+              border: { display: false },
+              grid: { color: 'rgba(15, 23, 42, 0.05)', drawTicks: false },
+              ticks: {
+                color: '#94a3b8',
+                font: { size: 11, family: "'Inter', sans-serif" },
+                padding: 8,
+                stepSize: 1,
+                callback: v => Number.isInteger(v) ? v : ''
+              }
+            },
+            y2: {
+              type: 'linear',
+              position: 'right',
+              beginAtZero: true,
+              max: 100,
+              border: { display: false },
+              grid: { drawOnChartArea: false, drawTicks: false },
+              ticks: {
+                color: '#94a3b8',
+                font: { size: 11, family: "'Inter', sans-serif" },
+                padding: 8,
+                callback: v => `${v}%`
+              }
+            },
+            x: {
+              border: { display: false },
+              grid: { display: false },
+              ticks: {
+                color: '#94a3b8',
+                font: { size: 11, family: "'Inter', sans-serif" },
+                padding: 6,
+                maxRotation: 0,
+                autoSkip: true,
+                maxTicksLimit: 7,
+                callback: function(val) {
+                  const label = this.getLabelForValue(val);
+                  const d = new Date(label + 'T00:00:00');
+                  return `${d.getMonth()+1}/${d.getDate()}`;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+  }
+}
+</script>

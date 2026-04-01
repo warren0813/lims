@@ -5,12 +5,12 @@ Django sessions. Role-based access is enforced via the role_required decorator.
 """
 
 import json
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from django.contrib.auth import authenticate, login, logout
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Prefetch
+from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F, Prefetch
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -105,6 +105,11 @@ def dashboard_view(request: HttpRequest) -> HttpResponse:
         return redirect("web:login")
 
     role = _user_role(request)
+    today = date.today()
+    chart_ctx = {
+        "chart_start_date": (today - timedelta(days=13)).isoformat(),
+        "chart_end_date": today.isoformat(),
+    }
     if role == Role.FAB_USER:
         requests_qs = Request.objects.filter(requester=request.user).order_by(
             "-created_at"
@@ -122,6 +127,7 @@ def dashboard_view(request: HttpRequest) -> HttpResponse:
                     requester=request.user,
                     status=RequestStatus.PENDING_APPROVAL,
                 ).count(),
+                **chart_ctx,
             },
         )
     elif role == Role.LAB_STAFF:
@@ -147,6 +153,7 @@ def dashboard_view(request: HttpRequest) -> HttpResponse:
                 "exception_dispatches": Dispatch.objects.filter(
                     status=DispatchStatus.EXECUTION_EXCEPTION
                 ).count(),
+                **chart_ctx,
             },
         )
     elif role == Role.LAB_MANAGER:
@@ -165,11 +172,177 @@ def dashboard_view(request: HttpRequest) -> HttpResponse:
                     status=RequestStatus.COMPLETED
                 ).count(),
                 "total_equipment": Equipment.objects.count(),
+                **chart_ctx,
             },
         )
 
     # No profile / unknown role
     return render(request, "web/dashboard/fab_user.html", {"title": "Dashboard"})
+
+
+# ---------------------------------------------------------------------------
+# Dashboard chart helpers
+# ---------------------------------------------------------------------------
+
+
+def _parse_chart_dates(request: HttpRequest) -> tuple[date, date]:
+    """Parse start_date/end_date GET params; default to last 14 days on error."""
+    today = date.today()
+    try:
+        start = date.fromisoformat(request.GET.get("start_date", ""))
+        end = date.fromisoformat(request.GET.get("end_date", ""))
+    except (ValueError, TypeError):
+        start = today - timedelta(days=13)
+        end = today
+    return start, end
+
+
+def _build_daily_series(
+    start: date,
+    end: date,
+    qs_by_day: dict,
+    default: float | int | None = 0,
+) -> tuple[list[str], list]:
+    """Return (labels, values) for every day in [start, end], filling gaps with default."""
+    day_count = (end - start).days + 1
+    labels = [(start + timedelta(days=i)).isoformat() for i in range(day_count)]
+    values = [qs_by_day.get(label, default) for label in labels]
+    return labels, values
+
+
+# ---------------------------------------------------------------------------
+# Dashboard chart views
+# ---------------------------------------------------------------------------
+
+
+@role_required("fab_user")
+def dashboard_chart_tat(request: HttpRequest) -> HttpResponse:
+    """HTMX partial: TAT stability trend for the current fab user."""
+    start, end = _parse_chart_dates(request)
+
+    qs = (
+        Request.objects.filter(
+            requester=request.user,
+            status__in=[RequestStatus.COMPLETED, RequestStatus.CLOSED],
+            completed_at__date__gte=start,
+            completed_at__date__lte=end,
+        )
+        .values("completed_at__date")
+        .annotate(
+            avg_duration=Avg(
+                ExpressionWrapper(
+                    F("completed_at") - F("created_at"),
+                    output_field=DurationField(),
+                )
+            )
+        )
+        .order_by("completed_at__date")
+    )
+
+    day_map: dict[str, float | None] = {}
+    for row in qs:
+        day_str = row["completed_at__date"].isoformat()
+        if row["avg_duration"] is not None:
+            day_map[day_str] = round(row["avg_duration"].total_seconds() / 3600, 1)
+
+    labels, values = _build_daily_series(start, end, day_map, default=None)
+    chart_json = json.dumps({"labels": labels, "values": values})
+    return render(request, "web/dashboard/_tat_chart.html", {"chart_json": chart_json})
+
+
+@role_required("lab_staff")
+def dashboard_chart_workload(request: HttpRequest) -> HttpResponse:
+    """HTMX partial: workload chart (new vs completed WIPs) for lab staff."""
+    start, end = _parse_chart_dates(request)
+
+    new_qs = (
+        WIP.objects.filter(
+            created_at__date__gte=start,
+            created_at__date__lte=end,
+        )
+        .values("created_at__date")
+        .annotate(count=Count("id"))
+        .order_by("created_at__date")
+    )
+    new_map = {row["created_at__date"].isoformat(): row["count"] for row in new_qs}
+
+    completed_qs = (
+        WIP.objects.filter(
+            status=WIPStatus.COMPLETED,
+            completed_at__date__gte=start,
+            completed_at__date__lte=end,
+        )
+        .values("completed_at__date")
+        .annotate(count=Count("id"))
+        .order_by("completed_at__date")
+    )
+    completed_map = {
+        row["completed_at__date"].isoformat(): row["count"] for row in completed_qs
+    }
+
+    labels, new_values = _build_daily_series(start, end, new_map)
+    _, completed_values = _build_daily_series(start, end, completed_map)
+
+    chart_json = json.dumps(
+        {"labels": labels, "new_wips": new_values, "completed_wips": completed_values}
+    )
+    return render(
+        request, "web/dashboard/_workload_chart.html", {"chart_json": chart_json}
+    )
+
+
+@role_required("lab_manager")
+def dashboard_chart_capacity(request: HttpRequest) -> HttpResponse:
+    """HTMX partial: capacity/utilization trend for lab manager."""
+    start, end = _parse_chart_dates(request)
+    total_equipment = Equipment.objects.count()
+
+    throughput_qs = (
+        Dispatch.objects.filter(
+            dispatched_at__isnull=False,
+            dispatched_at__date__gte=start,
+            dispatched_at__date__lte=end,
+        )
+        .values("dispatched_at__date")
+        .annotate(count=Count("id"))
+        .order_by("dispatched_at__date")
+    )
+    throughput_map = {
+        row["dispatched_at__date"].isoformat(): row["count"] for row in throughput_qs
+    }
+
+    active_qs = (
+        Dispatch.objects.filter(
+            dispatched_at__isnull=False,
+            dispatched_at__date__gte=start,
+            dispatched_at__date__lte=end,
+        )
+        .values("dispatched_at__date")
+        .annotate(active=Count("equipment_id", distinct=True))
+        .order_by("dispatched_at__date")
+    )
+    utilization_map = {
+        row["dispatched_at__date"].isoformat(): round(
+            row["active"] / max(total_equipment, 1) * 100, 1
+        )
+        for row in active_qs
+    }
+
+    labels, throughput_values = _build_daily_series(start, end, throughput_map)
+    _, utilization_values = _build_daily_series(
+        start, end, utilization_map, default=0.0
+    )
+
+    chart_json = json.dumps(
+        {
+            "labels": labels,
+            "throughput": throughput_values,
+            "utilization_pct": utilization_values,
+        }
+    )
+    return render(
+        request, "web/dashboard/_capacity_chart.html", {"chart_json": chart_json}
+    )
 
 
 # ---------------------------------------------------------------------------
