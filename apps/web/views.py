@@ -8,7 +8,16 @@ import json
 from datetime import date, timedelta
 from typing import Any
 
-from django.contrib.auth import authenticate, login, logout
+from django.conf import settings
+from django.contrib.auth import (
+    BACKEND_SESSION_KEY,
+    HASH_SESSION_KEY,
+    SESSION_KEY,
+    authenticate,
+    login,
+    logout,
+)
+from django.contrib.sessions.backends.db import SessionStore
 from django.db import IntegrityError, transaction
 from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F, Prefetch
 from django.http import HttpRequest, HttpResponse
@@ -98,6 +107,138 @@ def login_view(request: HttpRequest) -> HttpResponse:
 def logout_view(request: HttpRequest) -> HttpResponse:
     logout(request)
     return redirect("web:login")
+
+
+# ---------------------------------------------------------------------------
+# Multi-account helpers
+# ---------------------------------------------------------------------------
+
+
+def _account_entry(user: Any, session_key: str) -> dict:
+    profile = getattr(user, "profile", None)
+    return {
+        "session_key": session_key,
+        "user_id": user.pk,
+        "username": user.username,
+        "role_display": profile.get_role_display() if profile else "",
+    }
+
+
+def _sync_linked_sessions(session: SessionStore, new_entries: list[dict]) -> None:
+    """Replace _linked_sessions in the given session and save."""
+    session["_linked_sessions"] = new_entries
+    session.save()
+
+
+# ---------------------------------------------------------------------------
+# Multi-account views
+# ---------------------------------------------------------------------------
+
+
+def add_account_view(request: HttpRequest) -> HttpResponse:
+    """Add a second (or more) account to the current browser session."""
+    if not request.user.is_authenticated:
+        return redirect("web:login")
+
+    error = None
+    if request.method == "POST":
+        username = request.POST.get("username", "").strip()
+        password = request.POST.get("password", "")
+        new_user = authenticate(request, username=username, password=password)
+
+        if new_user is None:
+            error = "Invalid username or password."
+        elif new_user.pk == request.user.pk:
+            error = "This account is already active."
+        else:
+            # Check if already linked
+            current_linked: list[dict] = request.session.get("_linked_sessions", [])
+            if any(a["user_id"] == new_user.pk for a in current_linked):
+                error = "This account is already added."
+            else:
+                # Build the new session for new_user
+                new_session = SessionStore()
+                new_session[SESSION_KEY] = str(new_user.pk)
+                new_session[BACKEND_SESSION_KEY] = (
+                    "django.contrib.auth.backends.ModelBackend"
+                )
+                new_session[HASH_SESSION_KEY] = new_user.get_session_auth_hash()
+
+                # New session's linked list = current user + existing linked
+                current_entry = _account_entry(
+                    request.user, request.session.session_key
+                )
+                new_session["_linked_sessions"] = [current_entry] + current_linked
+                new_session.create()
+
+                # Add new user to current session's linked list
+                current_linked.append(_account_entry(new_user, new_session.session_key))
+                request.session["_linked_sessions"] = current_linked
+
+                return redirect("web:dashboard")
+
+    return render(request, "web/add_account.html", {"error": error})
+
+
+def switch_account_view(request: HttpRequest, user_id: int) -> HttpResponse:
+    """Switch the active session to a linked account."""
+    if not request.user.is_authenticated:
+        return redirect("web:login")
+
+    linked: list[dict] = request.session.get("_linked_sessions", [])
+    target = next((a for a in linked if a["user_id"] == user_id), None)
+    if target is None:
+        return redirect("web:dashboard")
+
+    # Verify target session is still alive
+    target_session = SessionStore(session_key=target["session_key"])
+    if not target_session.exists(target["session_key"]):
+        # Session expired — remove stale entry
+        request.session["_linked_sessions"] = [
+            a for a in linked if a["user_id"] != user_id
+        ]
+        return redirect("web:dashboard")
+
+    # Sync target session's linked list so it includes the current user
+    target_linked: list[dict] = target_session.get("_linked_sessions", [])
+    current_entry = _account_entry(request.user, request.session.session_key)
+    target_linked = [a for a in target_linked if a["user_id"] != request.user.pk]
+    target_linked.append(current_entry)
+    _sync_linked_sessions(target_session, target_linked)
+
+    # Switch cookie to target session
+    cookie_settings = {
+        "max_age": settings.SESSION_COOKIE_AGE,
+        "path": settings.SESSION_COOKIE_PATH,
+        "domain": settings.SESSION_COOKIE_DOMAIN,
+        "secure": settings.SESSION_COOKIE_SECURE,
+        "httponly": settings.SESSION_COOKIE_HTTPONLY,
+        "samesite": settings.SESSION_COOKIE_SAMESITE,
+    }
+    response = redirect("web:dashboard")
+    response.set_cookie(
+        settings.SESSION_COOKIE_NAME, target["session_key"], **cookie_settings
+    )
+    return response
+
+
+@require_POST
+def remove_account_view(request: HttpRequest, user_id: int) -> HttpResponse:
+    """Remove a linked account from the current browser session."""
+    if not request.user.is_authenticated:
+        return redirect("web:login")
+
+    linked: list[dict] = request.session.get("_linked_sessions", [])
+    target = next((a for a in linked if a["user_id"] == user_id), None)
+    if target:
+        # Delete that session from the database
+        target_session = SessionStore(session_key=target["session_key"])
+        target_session.delete()
+        request.session["_linked_sessions"] = [
+            a for a in linked if a["user_id"] != user_id
+        ]
+
+    return redirect("web:dashboard")
 
 
 def dashboard_view(request: HttpRequest) -> HttpResponse:

@@ -13,6 +13,18 @@ urlpatterns = [
     path("dashboard/", views.dashboard_view, name="dashboard"),
     # Redirect root to login
     path("", views.login_view, name="root"),
+    # ── Multi-account ──────────────────────────────────────────────────────
+    path("accounts/add/", views.add_account_view, name="account-add"),
+    path(
+        "accounts/switch/<int:user_id>/",
+        views.switch_account_view,
+        name="account-switch",
+    ),
+    path(
+        "accounts/remove/<int:user_id>/",
+        views.remove_account_view,
+        name="account-remove",
+    ),
     # ── FAB_USER: commission requests ──────────────────────────────────────
     path("requests/", views.my_requests_list, name="my-requests"),
     path("requests/new/", views.request_create, name="request-create"),

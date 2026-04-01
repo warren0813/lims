@@ -136,9 +136,13 @@
       {% endwith %}
     </nav>
 
-    <!-- User info -->
-    <div class="px-3 py-4 border-t border-white/[0.07]">
-      <div class="flex items-center gap-3 px-3 py-2">
+    <!-- User info / Account switcher -->
+    <div class="px-3 py-3 border-t border-white/[0.07]" x-data="{ open: false }">
+
+      <!-- Toggle button -->
+      <button @click="open = !open"
+              class="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-white/[0.06] transition-colors text-left"
+              hx-boost="false">
         <div class="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
           <span class="text-xs font-semibold text-white">{{ request.user.username|first|upper }}</span>
         </div>
@@ -148,15 +152,70 @@
           <p class="text-xs text-slate-500 truncate">{{ request.user.profile.get_role_display }}</p>
           {% endif %}
         </div>
-        <a href="{% url 'web:logout' %}"
-           class="text-slate-500 hover:text-white transition-colors cursor-pointer"
-           title="Sign out"
+        <svg class="w-3.5 h-3.5 text-slate-500 flex-shrink-0 transition-transform duration-150"
+             :class="open ? 'rotate-180' : ''"
+             fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>
+
+      <!-- Dropdown panel -->
+      <div x-show="open"
+           x-transition:enter="transition ease-out duration-150"
+           x-transition:enter-start="opacity-0 -translate-y-1"
+           x-transition:enter-end="opacity-100 translate-y-0"
+           x-transition:leave="transition ease-in duration-100"
+           x-transition:leave-end="opacity-0"
+           class="mt-1 space-y-0.5">
+
+        {% if linked_accounts %}
+        <p class="px-3 pt-1 pb-0.5 text-xs font-semibold text-slate-600 uppercase tracking-wider">Linked accounts</p>
+        {% for acct in linked_accounts %}
+        <div class="flex items-center gap-2 px-3 py-1.5 rounded-md group">
+          <div class="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0">
+            <span class="text-xs font-semibold text-slate-300">{{ acct.username|first|upper }}</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <a href="{% url 'web:account-switch' acct.user_id %}"
+               class="block text-xs font-medium text-slate-300 hover:text-white truncate leading-tight"
+               hx-boost="false">{{ acct.username }}</a>
+            <p class="text-xs text-slate-600 truncate leading-tight">{{ acct.role_display }}</p>
+          </div>
+          <form method="post" action="{% url 'web:account-remove' acct.user_id %}" hx-boost="false">
+            {% csrf_token %}
+            <button type="submit"
+                    class="text-slate-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                    title="Remove account">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </form>
+        </div>
+        {% endfor %}
+        {% endif %}
+
+        <!-- Add account -->
+        <a href="{% url 'web:account-add' %}"
+           class="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs text-slate-500 hover:text-slate-300 hover:bg-white/[0.04] transition-colors"
            hx-boost="false">
-          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+          </svg>
+          Add account
+        </a>
+
+        <!-- Sign out -->
+        <a href="{% url 'web:logout' %}"
+           class="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs text-slate-500 hover:text-white hover:bg-white/[0.04] transition-colors"
+           hx-boost="false">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
           </svg>
+          Sign out
         </a>
       </div>
+
     </div>
   </aside>
 
