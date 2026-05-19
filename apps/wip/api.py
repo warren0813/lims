@@ -70,9 +70,13 @@ def _wip_detail_queryset() -> "models.QuerySet[WIP]":
 
 
 def _dispatch_detail_queryset() -> "models.QuerySet[Dispatch]":
-    """Base queryset with all prefetches needed for DispatchDetailOut."""
+    """Base queryset with all prefetches needed for DispatchDetailOut.
+
+    created_by__profile is selected so DispatchDetailOut.from_dispatch
+    can render the operator's department without an extra query.
+    """
     return Dispatch.objects.select_related(
-        "experiment_type", "recipe", "wip__equipment"
+"experiment_type", "recipe", "wip__equipment", "created_by__profile"
     ).prefetch_related("result")
 
 
@@ -545,11 +549,15 @@ def list_dispatches(
     wip_id: int | None = Query(None),
     equipment_id: int | None = Query(None),
 ):
-    """List dispatches with optional filters. Lab staff and managers only."""
+    """List dispatches with optional filters. Lab staff and managers only.
+
+    Selects created_by__profile so the response can include the
+    operator's username and department for each row without an N+1.
+    """
     if not has_lab_role(request):
         return 403, {"detail": "Permission denied"}
 
-    qs = Dispatch.objects.order_by("-created_at")
+    qs = Dispatch.objects.select_related("created_by__profile").order_by("-created_at")
     if status:
         qs = qs.filter(status=status)
     if wip_id:
@@ -557,7 +565,7 @@ def list_dispatches(
     if equipment_id:
         qs = qs.filter(wip__equipment_id=equipment_id)
 
-    return 200, list(qs)
+    return 200, [DispatchListOut.from_dispatch(d) for d in qs]
 
 
 @dispatch_router.get(

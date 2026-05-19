@@ -503,6 +503,23 @@ class TestDispatchList:
         resp = client.get("/api/dispatches/", **auth_headers(fab_user))
         assert resp.status_code == 403
 
+    def test_list_dispatch_row_includes_created_by(
+        self, client, auth_headers, lab_staff, dispatch
+    ):
+        """Each list row exposes the operator who created the dispatch.
+
+        Used by the SPA Dispatches list to render an Operator column.
+        Shape: {id, username, department}. department is empty string if
+        the user has no profile."""
+        resp = client.get("/api/dispatches/", **auth_headers(lab_staff))
+        assert resp.status_code == 200
+        rows = {row["id"]: row for row in resp.json()}
+        row = rows[dispatch.pk]
+        assert row["created_by"] is not None
+        assert row["created_by"]["id"] == dispatch.created_by_id
+        assert row["created_by"]["username"] == dispatch.created_by.username
+        assert "department" in row["created_by"]
+
 
 @pytest.mark.django_db
 class TestDispatchDetail:
@@ -540,6 +557,18 @@ class TestDispatchDetail:
         """Fab user cannot get dispatch detail."""
         resp = client.get(f"/api/dispatches/{dispatch.pk}/", **auth_headers(fab_user))
         assert resp.status_code == 403
+
+    def test_dispatch_detail_includes_created_by(
+        self, client, auth_headers, lab_staff, dispatch
+    ):
+        """Detail response exposes the operator who created the dispatch."""
+        resp = client.get(f"/api/dispatches/{dispatch.pk}/", **auth_headers(lab_staff))
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["created_by"] is not None
+        assert data["created_by"]["id"] == dispatch.created_by_id
+        assert data["created_by"]["username"] == dispatch.created_by.username
+        assert "department" in data["created_by"]
 
 
 @pytest.mark.django_db

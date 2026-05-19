@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any
 
 from ninja import Field, Schema
 
+from apps.commissions.schemas import RequesterOut
+
 if TYPE_CHECKING:
     from apps.wip.models import WIP, Dispatch
 
@@ -192,6 +194,25 @@ class WIPDetailOut(Schema):
 # --- Dispatch output schemas ---
 
 
+def _build_created_by(dispatch: Dispatch) -> dict | None:
+    """Shape a Dispatch.created_by user into RequesterOut form.
+
+    Returns None if created_by is unset (defensive — the FK is non-null
+    on the model, but ORM instances created in some test paths could
+    plausibly leave it dangling, and we'd rather render a null operator
+    than 500). department falls back to '' when the user has no profile.
+    """
+    user = dispatch.created_by
+    if user is None:
+        return None
+    profile = getattr(user, "profile", None)
+    return {
+        "id": user.pk,
+        "username": user.username,
+        "department": profile.department if profile else "",
+    }
+
+
 class DispatchDetailOut(Schema):
     """Output schema for dispatch detail responses."""
 
@@ -208,6 +229,7 @@ class DispatchDetailOut(Schema):
     dispatched_at: datetime | None
     completed_at: datetime | None
     result: ExperimentResultOut | None
+    created_by: RequesterOut | None
     created_at: datetime
     updated_at: datetime
 
@@ -239,6 +261,7 @@ class DispatchDetailOut(Schema):
             "dispatched_at": dispatch.dispatched_at,
             "completed_at": dispatch.completed_at,
             "result": result,
+            "created_by": _build_created_by(dispatch),
             "created_at": dispatch.created_at,
             "updated_at": dispatch.updated_at,
         }
@@ -254,5 +277,28 @@ class DispatchListOut(Schema):
     status: str
     dispatched_at: datetime | None
     completed_at: datetime | None
+    created_by: RequesterOut | None
     created_at: datetime
     updated_at: datetime
+
+    @staticmethod
+    def from_dispatch(dispatch: Dispatch) -> dict:
+        """Build a dict from a Dispatch instance for the list response.
+
+        The list endpoint switched from raw queryset auto-serialization
+        to an explicit builder once we needed nested created_by — Ninja
+        can't infer a {id, username, department} dict from a Django User
+        FK on its own."""
+        return {
+            "id": dispatch.pk,
+            "wip_id": dispatch.wip_id,
+            "experiment_type_id": dispatch.experiment_type_id,
+            "equipment_id": dispatch.equipment_id,
+            "recipe_id": dispatch.recipe_id,
+            "status": dispatch.status,
+            "dispatched_at": dispatch.dispatched_at,
+            "completed_at": dispatch.completed_at,
+            "created_by": _build_created_by(dispatch),
+            "created_at": dispatch.created_at,
+            "updated_at": dispatch.updated_at,
+        }
