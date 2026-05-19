@@ -209,3 +209,4 @@ __marimo__/
 # Claude Code
 .claude/worktrees/
 /.claude/skills
+CLAUDE.local.md
