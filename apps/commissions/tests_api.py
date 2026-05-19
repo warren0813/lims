@@ -104,6 +104,28 @@ class TestRequestList:
         resp = client.get("/api/requests/")
         assert resp.status_code == 401
 
+    def test_list_requests_includes_urgency(self, client, auth_headers, lab_staff):
+        """List response exposes the urgency field."""
+        RequestFactory(urgency="3d")
+
+        resp = client.get("/api/requests/", **auth_headers(lab_staff))
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["urgency"] == "3d"
+
+    def test_list_requests_filter_by_urgency(self, client, auth_headers, lab_staff):
+        """Can filter requests by urgency."""
+        RequestFactory(urgency="3d")
+        RequestFactory(urgency="1w")
+        RequestFactory(urgency="2w")
+
+        resp = client.get("/api/requests/?urgency=3d", **auth_headers(lab_staff))
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["urgency"] == "3d"
+
 
 @pytest.mark.django_db
 class TestRequestCreate:
@@ -193,6 +215,47 @@ class TestRequestCreate:
         )
         assert resp.status_code == 422
 
+    def test_create_request_round_trips_urgency(
+        self, client, auth_headers, fab_user, experiment_type
+    ):
+        """Urgency provided on create is persisted and returned in detail response."""
+        payload = {
+            "title": "Urgent",
+            "urgency": "3d",
+            "experiment_type_ids": [experiment_type.pk],
+            "samples": [{"wafer_id": "WF-001", "wafer_size": "300mm"}],
+        }
+        resp = client.post(
+            "/api/requests/",
+            data=payload,
+            content_type="application/json",
+            **auth_headers(fab_user),
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["urgency"] == "3d"
+
+        req = Request.objects.get(pk=data["id"])
+        assert req.urgency == "3d"
+
+    def test_create_request_defaults_urgency_to_one_week(
+        self, client, auth_headers, fab_user, experiment_type
+    ):
+        """Urgency omitted on create defaults to '1w'."""
+        payload = {
+            "title": "Default urgency",
+            "experiment_type_ids": [experiment_type.pk],
+            "samples": [{"wafer_id": "WF-001", "wafer_size": "300mm"}],
+        }
+        resp = client.post(
+            "/api/requests/",
+            data=payload,
+            content_type="application/json",
+            **auth_headers(fab_user),
+        )
+        assert resp.status_code == 201
+        assert resp.json()["urgency"] == "1w"
+
 
 @pytest.mark.django_db
 class TestRequestDetail:
@@ -225,6 +288,13 @@ class TestRequestDetail:
         other_req = RequestFactory()  # different user
         resp = client.get(f"/api/requests/{other_req.pk}", **auth_headers(fab_user))
         assert resp.status_code == 404
+
+    def test_request_detail_includes_urgency(self, client, auth_headers, fab_user):
+        """Detail response exposes the urgency field."""
+        req = RequestFactory(requester=fab_user, urgency="2w")
+        resp = client.get(f"/api/requests/{req.pk}", **auth_headers(fab_user))
+        assert resp.status_code == 200
+        assert resp.json()["urgency"] == "2w"
 
 
 @pytest.mark.django_db
@@ -265,6 +335,22 @@ class TestRequestUpdate:
             **auth_headers(fab_user),
         )
         assert resp.status_code == 400
+
+    def test_update_urgency(self, client, auth_headers, fab_user):
+        """Fab user can patch urgency on a draft request."""
+        req = RequestFactory(
+            requester=fab_user, status=RequestStatus.DRAFT, urgency="1w"
+        )
+        resp = client.patch(
+            f"/api/requests/{req.pk}",
+            data={"urgency": "3d"},
+            content_type="application/json",
+            **auth_headers(fab_user),
+        )
+        assert resp.status_code == 200
+        assert resp.json()["urgency"] == "3d"
+        req.refresh_from_db()
+        assert req.urgency == "3d"
 
 
 @pytest.mark.django_db

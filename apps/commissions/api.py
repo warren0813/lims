@@ -18,6 +18,7 @@ from apps.commissions.models import (
     Request,
     RequestExperiment,
     RequestStatus,
+    RequestUrgency,
     Sample,
     SampleStatus,
 )
@@ -225,6 +226,7 @@ def _lab_sample_action(
 def list_requests(
     request: HttpRequest,
     status: RequestStatus | None = Query(None),  # noqa: B008
+    urgency: RequestUrgency | None = Query(None),  # noqa: B008
 ):
     """List commission requests. Fab users see only their own."""
     qs = Request.objects.select_related("requester__profile").order_by("-created_at")
@@ -234,6 +236,8 @@ def list_requests(
 
     if status:
         qs = qs.filter(status=status)
+    if urgency:
+        qs = qs.filter(urgency=urgency)
 
     return [RequestListOut.from_request(r) for r in qs]
 
@@ -256,6 +260,7 @@ def create_request(request: HttpRequest, payload: RequestIn):
         req = Request.objects.create(
             title=payload.title,
             note=payload.note,
+            urgency=payload.urgency,
             requester=request.auth,
         )
 

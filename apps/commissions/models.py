@@ -7,6 +7,12 @@ class WaferSize(models.TextChoices):
     SIZE_300MM = "300mm", "300mm"
 
 
+class RequestUrgency(models.TextChoices):
+    THREE_DAYS = "3d", "3 days"
+    ONE_WEEK = "1w", "1 week"
+    TWO_WEEKS = "2w", "2 weeks"
+
+
 class RequestStatus(models.TextChoices):
     DRAFT = "draft", "草稿"
     PENDING_APPROVAL = "pending_approval", "待簽核"
@@ -45,6 +51,11 @@ class Request(models.Model):
         max_length=20,
         choices=RequestStatus.choices,
         default=RequestStatus.DRAFT,
+    )
+    urgency = models.CharField(
+        max_length=4,
+        choices=RequestUrgency.choices,
+        default=RequestUrgency.ONE_WEEK,
     )
     experiment_types = models.ManyToManyField(
         "experiments.ExperimentType",

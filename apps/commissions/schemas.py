@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from ninja import Field, Schema
 
-from apps.commissions.models import WaferSize
+from apps.commissions.models import RequestUrgency, WaferSize
 
 if TYPE_CHECKING:
     from apps.commissions.models import Request, Sample
@@ -75,6 +75,7 @@ class RequestIn(Schema):
 
     title: str = Field(..., min_length=1, max_length=300)
     note: str = ""
+    urgency: RequestUrgency = RequestUrgency.ONE_WEEK
     experiment_type_ids: list[int] = Field(..., min_length=1)
     experiment_parameters: dict[str, dict[str, Any]] = {}
     samples: list[SampleIn] = Field(..., min_length=1)
@@ -85,6 +86,7 @@ class RequestUpdateIn(Schema):
 
     title: str | None = Field(None, min_length=1, max_length=300)
     note: str | None = None
+    urgency: RequestUrgency | None = None
 
 
 # --- Action input schemas ---
@@ -118,6 +120,7 @@ class RequestListOut(Schema):
     title: str
     requester: RequesterOut
     status: str
+    urgency: str
     note: str
     submitted_at: datetime | None
     created_at: datetime
@@ -136,6 +139,7 @@ class RequestListOut(Schema):
                 "department": profile.department if profile else "",
             },
             "status": req.status,
+            "urgency": req.urgency,
             "note": req.note,
             "submitted_at": req.submitted_at,
             "created_at": req.created_at,
@@ -150,6 +154,7 @@ class RequestDetailOut(Schema):
     title: str
     requester: RequesterOut
     status: str
+    urgency: str
     note: str
     experiment_types: list[ExperimentTypeWithParamsOut]
     samples: list[SampleBriefOut]
@@ -212,6 +217,7 @@ class RequestDetailOut(Schema):
                 "department": profile.department if profile else "",
             },
             "status": req.status,
+            "urgency": req.urgency,
             "note": req.note,
             "experiment_types": experiment_types,
             "samples": samples,
