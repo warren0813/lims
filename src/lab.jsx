@@ -62,6 +62,25 @@ const WIP_SEED = [
   { id: 'WIP-7698', equipmentId: 'QA-TCT-02',  experimentId: 'tct',  waferIds: ['W040701'],            note: '',                     status: 'completed',   createdAt: '2026-05-08 10:00', dispatchIds: ['DP-3300'] },
 ];
 
+// Live WIP list (read-only). Returns the normalized rows from /wips/;
+// `sample_count` is server-annotated on `WIPListOut`, but `dispatch_count`
+// is not yet exposed (gap doc §4 follow-up) so list rows show "—" for it.
+const useLabWips = () => {
+  const [wips, setWips] = lS([]);
+  const [loading, setLoading] = lS(true);
+  const [error, setError] = lS(null);
+  const refresh = React.useCallback(() => {
+    if (!window.api || !window.api.wips) { setLoading(false); return; }
+    setLoading(true);
+    window.api.wips.list()
+      .then(ws => { setWips(ws); setError(null); })
+      .catch(err => setError(err.message || String(err)))
+      .finally(() => setLoading(false));
+  }, []);
+  React.useEffect(() => { refresh(); }, [refresh]);
+  return { wips, loading, error, refresh };
+};
+
 // Live tile-count fetch for the Lab Dashboard. Mirrors the fab dashboard's
 // useRequests pattern but pulls three lists in parallel so the four count
 // tiles (Incoming wafers / Active WIPs / Dispatches live / To record) all
@@ -1106,7 +1125,8 @@ const LabWaferDetail = ({ id, wafers, wips, dispatches, navigate, onReceive, onR
 };
 
 // ── WIP list ────────────────────────────────────────────────────
-const LabWipList = ({ wips, wafers, dispatches, navigate, openNewWip }) => {
+const LabWipList = ({ navigate, showToast }) => {
+  const { wips, loading, error } = useLabWips();
   const [tab, setTab] = lS('active');
   const filtered = tab === 'active'
     ? wips.filter(w => w.status === 'in_progress')
@@ -1114,12 +1134,38 @@ const LabWipList = ({ wips, wafers, dispatches, navigate, openNewWip }) => {
       ? wips.filter(w => w.status !== 'in_progress')
       : wips;
 
+  // The new-WIP modal is one of the three redesigned modals waiting on
+  // spec signoff (see CLAUDE.local.md). Until then the button just
+  // surfaces a toast so the entry point stays visible.
+  const handleNewWip = () => {
+    showToast && showToast('Modal redesign pending');
+  };
+
+  if (loading && wips.length === 0) {
+    return (
+      <Page title="WIP" subtitle="Loading…">
+        <div style={{ padding: '60px 20px', textAlign: 'center', color: muted, fontSize: 14 }}>
+          Loading…
+        </div>
+      </Page>
+    );
+  }
+
   return (
     <Page
       title="WIP"
       subtitle="Work-in-progress units — each WIP runs one experiment on one piece of equipment"
-      right={<PrimaryBtn icon={<LF.Plus size={14}/>} onClick={openNewWip}>New WIP</PrimaryBtn>}
+      right={<PrimaryBtn icon={<LF.Plus size={14}/>} onClick={handleNewWip}>New WIP</PrimaryBtn>}
     >
+      {error && (
+        <div style={{
+          padding: '12px 16px', marginBottom: 14, borderRadius: 10,
+          background: '#fde4e4', color: '#c0394a', fontSize: 13.5, fontWeight: 500,
+          border: '1px solid #f6c4c4',
+        }}>
+          Couldn't load WIPs: {error}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 4, marginBottom: 14, borderBottom: `1px solid ${line}` }}>
         {[
           { id: 'active',    label: 'Active',    n: wips.filter(w => w.status === 'in_progress').length },
@@ -1154,7 +1200,12 @@ const LabWipList = ({ wips, wafers, dispatches, navigate, openNewWip }) => {
             <div style={{ fontSize: 14, fontWeight: 600, color: text2 }}>No WIPs in this view</div>
           </Card>
         ) : filtered.map(w => {
-          const exp = findExp(w.experimentId);
+          // Backend's experiment_type_id is integer; the local EXPERIMENTS
+          // catalogue uses string slugs. Prefer the server-provided name +
+          // derive a short code from it; fall back to findExp for any
+          // legacy seed-shaped rows that might still come through.
+          const expName = w.experimentName || findExp(w.experimentId)?.name || '—';
+          const expCode = (findExp(w.experimentId)?.code) || (w.experimentName ? w.experimentName.split(/\s+/).map(t => t[0]).join('').slice(0, 4).toUpperCase() : '—');
           return (
             <button key={w.id} onClick={() => navigate({ page: 'lab_wip_detail', id: w.id })} style={{
               display: 'grid',
@@ -1169,27 +1220,29 @@ const LabWipList = ({ wips, wafers, dispatches, navigate, openNewWip }) => {
               onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(0,0,0,0.18)'; }}
               onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(0,0,0,0.08)'; }}
             >
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13.5, fontWeight: 700, color: ink, letterSpacing: '0.02em' }}>{w.id}</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13.5, fontWeight: 700, color: ink, letterSpacing: '0.02em' }}>{w.code || w.id}</span>
               <div style={{ minWidth: 0, display: 'inline-flex', alignItems: 'center', gap: 10 }}>
                 <span style={{
                   fontSize: 10.5, fontWeight: 700, padding: '3px 8px', borderRadius: 999,
                   background: '#ecebf3', color: '#4f4a8f', letterSpacing: '0.05em', flexShrink: 0,
-                }}>{exp?.code}</span>
+                }}>{expCode}</span>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 14.5, fontWeight: 700, color: ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exp?.name}</div>
+                  <div style={{ fontSize: 14.5, fontWeight: 700, color: ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{expName}</div>
                   <div style={{ fontSize: 12, color: muted, marginTop: 3 }}>
-                    {w.note ? w.note : `created ${w.createdAt.split(' ')[0]}`}
+                    {w.note ? w.note : (w.created ? `created ${w.created.split(' ')[0]}` : '')}
                   </div>
                 </div>
               </div>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, color: w.equipmentId ? text2 : muted }}>{w.equipmentId || '—'}</span>
+              {/* Equipment column was dropped from the WIP model in the chat-design v2 restoration */}
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, color: muted }}>—</span>
               <span style={{ fontSize: 13, fontWeight: 600, color: text2 }}>
                 <LF.Wafer size={12} color={muted} style={{ verticalAlign: '-2px', marginRight: 4 }}/>
-                {w.waferIds.length}
+                {w.sampleCount ?? (Array.isArray(w.waferIds) ? w.waferIds.length : 0)}
               </span>
-              <span style={{ fontSize: 13, fontWeight: 600, color: text2 }}>
+              {/* dispatch_count isn't on WIPListOut yet (gap §4 follow-up) */}
+              <span style={{ fontSize: 13, fontWeight: 600, color: muted }} title="Dispatch count pending backend addition (gap §4)">
                 <LF.Dispatch size={12} color={muted} style={{ verticalAlign: '-2px', marginRight: 4 }}/>
-                {w.dispatchIds.length}
+                —
               </span>
               <span><Pill kind={w.status} dotted={w.status === 'in_progress'}/></span>
               <LF.ChevronRight size={15} color="#cbcbd6"/>
@@ -2252,7 +2305,7 @@ const LabApp = ({ route, navigate, canManage = false }) => {
   else if (p === 'lab_wafer')
     page = <LabWaferDetail id={route.id} wafers={wafers} wips={wips} dispatches={dispatches} navigate={navigate} onReceive={onReceive} onReject={onReject}/>;
   else if (p === 'lab_wip' || p === 'wip')
-    page = <LabWipList wips={wips} wafers={wafers} dispatches={dispatches} navigate={navigate} openNewWip={() => setNewWipOpen(true)}/>;
+    page = <LabWipList navigate={navigate} showToast={showToast}/>;
   else if (p === 'lab_wip_detail')
     page = <LabWipDetail id={route.id} wips={wips} wafers={wafers} dispatches={dispatches} equipment={equipment} navigate={navigate}
       onCreateDispatch={createDispatch} onCompleteWip={onCompleteWip} onAbortWip={onAbortWip}/>;
