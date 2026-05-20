@@ -17,6 +17,45 @@ const mLineSft = 'rgba(0,0,0,0.05)';
 const mAccent  = '#6c67b8';
 const mBgSoft  = '#f7f7fa';
 
+// ── Live data hooks ──────────────────────────────────────────────
+// Manager-side request list. The lab manager sees every request across
+// fab users; tabs filter client-side so a single fetch drives the page.
+// (The /requests/ endpoint also accepts a ?status= filter — useful for
+// "only Pending" optimisation later if the volume justifies it.)
+const useMgrRequests = () => {
+  const [data, setData] = mS([]);
+  const [loading, setLoading] = mS(true);
+  const [error, setError] = mS(null);
+  const refresh = React.useCallback(() => {
+    if (!window.api || !window.api.requests) { setLoading(false); return; }
+    setLoading(true);
+    window.api.requests.list()
+      .then(rs => { setData(rs); setError(null); })
+      .catch(err => setError(err.message || String(err)))
+      .finally(() => setLoading(false));
+  }, []);
+  React.useEffect(() => { refresh(); }, [refresh]);
+  return { data, loading, error, refresh };
+};
+
+// Manager-side single-request detail (samples + approval_logs inline).
+// `refresh` is exposed so approve/return/reject can re-render in place.
+const useMgrRequestDetail = (id) => {
+  const [data, setData] = mS(null);
+  const [loading, setLoading] = mS(true);
+  const [error, setError] = mS(null);
+  const refresh = React.useCallback(() => {
+    if (id == null || !window.api || !window.api.requests) { setLoading(false); return; }
+    setLoading(true);
+    window.api.requests.get(id)
+      .then(r => { setData(r); setError(null); })
+      .catch(err => setError(err.message || String(err)))
+      .finally(() => setLoading(false));
+  }, [id]);
+  React.useEffect(() => { refresh(); }, [refresh]);
+  return { data, loading, error, refresh };
+};
+
 // ── Domain seeds ─────────────────────────────────────────────────
 // Pending requests waiting on manager approval. Mirrors the shape used by
 // fab.jsx's REQUEST_SEED so the same fields render.
@@ -302,16 +341,34 @@ const ALL_REQ_TABS = [
 
 const findExpById = (id) => MGR_EXPERIMENTS.find(e => e.id === id);
 
-const MgrAllRequests = ({ requests, navigate }) => {
+const MgrAllRequests = ({ navigate }) => {
+  const { data: requests, loading, error } = useMgrRequests();
   const [tab, setTab] = mS('pending');
   const counts = mM(() => Object.fromEntries(ALL_REQ_TABS.map(t => [t.id, requests.filter(t.filter).length])), [requests]);
   const list = requests.filter(ALL_REQ_TABS.find(t => t.id === tab)?.filter || (() => true));
+
+  if (loading && requests.length === 0) {
+    return (
+      <Page title="All Requests" subtitle="Loading…">
+        <div style={{ padding: '60px 20px', textAlign: 'center', color: mMuted, fontSize: 14 }}>Loading…</div>
+      </Page>
+    );
+  }
 
   return (
     <Page
       title="All Requests"
       subtitle="廠區送審申請 — approve, return, or reject submitted requests"
     >
+      {error && (
+        <div style={{
+          padding: '12px 16px', marginBottom: 14, borderRadius: 10,
+          background: '#fde4e4', color: '#c0394a', fontSize: 13.5, fontWeight: 500,
+          border: '1px solid #f6c4c4',
+        }}>
+          Couldn't load requests: {error}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 22, borderBottom: `1px solid ${mLine}`, marginBottom: 22 }}>
         {ALL_REQ_TABS.map(t => {
           const active = t.id === tab;
@@ -350,7 +407,12 @@ const MgrAllRequests = ({ requests, navigate }) => {
             <div style={{ fontSize: 14, fontWeight: 600, color: mText2 }}>No requests in this view</div>
           </Card>
         ) : list.map(r => {
-          const exps = r.expIds.map(findExpById).filter(Boolean);
+          // RequestListOut doesn't carry experiment_types (gap §3.7) — the
+          // adapter sets `expIds: []` on list rows, so we render the
+          // experiment chips column as empty space. The chip column stays
+          // in the grid so the layout matches the detail page.
+          const sampleCount = r.sampleCount ?? r.samples.length;
+          const requester = r.requester?.username || r.history[0]?.by || '—';
           return (
             <button key={r.id} onClick={() => navigate({ page: 'mgr_request', id: r.id })} style={{
               display: 'grid',
@@ -372,15 +434,16 @@ const MgrAllRequests = ({ requests, navigate }) => {
                 <div style={{ fontSize: 15, fontWeight: 700, color: mInk }}>{r.title}</div>
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 12.5, color: mMuted, flexWrap: 'wrap', whiteSpace: 'nowrap' }}>
                   <MI.Calendar size={12}/>
-                  <span style={{ fontFamily: 'var(--font-mono)' }}>{(r.submitted || r.created).split(' ')[0]}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)' }}>{((r.submitted || r.created) || '').split(' ')[0] || '—'}</span>
                   <span aria-hidden>·</span>
-                  <span>{r.samples.length} wafer{r.samples.length === 1 ? '' : 's'}</span>
+                  <span>{sampleCount} wafer{sampleCount === 1 ? '' : 's'}</span>
                   <span aria-hidden>·</span>
-                  <span>by <span style={{ fontFamily: 'var(--font-mono)', color: mText2 }}>{r.history[0]?.by || 'fab_user'}</span></span>
+                  <span>by <span style={{ fontFamily: 'var(--font-mono)', color: mText2 }}>{requester}</span></span>
                 </div>
               </div>
+              {/* Experiment chip slot — filled when expIds are populated (offline seed only for now). */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {exps.map(e => (
+                {r.expIds.map(findExpById).filter(Boolean).map(e => (
                   <span key={e.id} style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6,
                     padding: '4px 9px 4px 4px', borderRadius: 999,
@@ -443,11 +506,76 @@ const ApprovalModal = ({ open, onClose, action, onSubmit }) => {
 };
 
 // ── Request detail (manager view) ─────────────────────────────
-const MgrRequestDetail = ({ id, requests, navigate, onAction }) => {
-  const r = requests.find(x => x.id === id);
-  const [modal, setModal] = mS(null); // 'APPROVE' | 'RETURN' | 'REJECT' | null
-  if (!r) return <Page title="Request not found"/>;
-  const exps = r.expIds.map(findExpById).filter(Boolean);
+const MgrRequestDetail = ({ id, navigate, showToast }) => {
+  const { data: r, loading, error, refresh } = useMgrRequestDetail(id);
+  const [modal, setModal] = mS(null); // 'RETURN' | 'REJECT' | null
+  const [busy, setBusy] = mS(false);
+  const [actionError, setActionError] = mS(null);
+
+  const runAction = async (op, label) => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await op();
+      showToast && showToast(label);
+      refresh();
+    } catch (e) {
+      setActionError(e.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading && !r) {
+    return (
+      <Page title="Loading request…">
+        <div style={{ padding: '60px 20px', textAlign: 'center', color: mMuted, fontSize: 14 }}>Loading…</div>
+      </Page>
+    );
+  }
+  if (error || !r) {
+    return (
+      <Page
+        breadcrumb={<Breadcrumb items={[
+          { label: 'All Requests', onClick: () => navigate({ page: 'mgr_all_requests' }) },
+          { label: '?' },
+        ]}/>}
+        title="Request not found"
+      >
+        <div style={{ padding: 24, color: '#c0394a', fontSize: 14 }}>
+          {error || 'This request is no longer available.'}
+        </div>
+      </Page>
+    );
+  }
+
+  const onApprove = () => {
+    if (!window.confirm(`Approve "${r.title}"?`)) return;
+    runAction(() => window.api.requests.approve(r.id), `#${r.id} approved`);
+  };
+  const onMarkComplete = () => {
+    if (!window.confirm(`Mark "${r.title}" as complete? This closes the request.`)) return;
+    runAction(() => window.api.requests.close(r.id), `#${r.id} closed`);
+  };
+  const onSubmitModal = async (reason) => {
+    const action = modal;
+    setModal(null);
+    if (action === 'RETURN') {
+      await runAction(() => window.api.requests.returnRequest(r.id, reason), `#${r.id} returned`);
+    } else if (action === 'REJECT') {
+      await runAction(() => window.api.requests.reject(r.id, reason), `#${r.id} rejected`);
+    }
+  };
+
+  // Backend's RequestDetailOut carries `experiment_types: [{id, name, parameters}]`
+  // — no `lab_category`, so the RA/TM chip color falls back to the default for
+  // unknown groups. Names render correctly either way.
+  const exps = (r.experiment_types || []).map(et => ({
+    id: et.id,
+    name: et.name,
+    code: et.name ? et.name.split(/\s+/).map(t => t[0]).join('').slice(0, 4).toUpperCase() : '—',
+    group: 'RA', // unknown without cross-fetch; default to RA palette
+  }));
   const canAct = r.status === 'submitted';
   const canComplete = r.status === 'in_progress';
 
@@ -467,20 +595,29 @@ const MgrRequestDetail = ({ id, requests, navigate, onAction }) => {
           }}>#{String(r.id).padStart(4, '0')}</span>
           <Pill kind={r.status}/>
           <Pill kind={r.urgency} mapping={URGENCY_LABEL}/>
-          <span style={{ color: mText2, fontSize: 13 }}>by <strong style={{ color: mInk, fontFamily: 'var(--font-mono)' }}>{r.history[0]?.by || 'fab_user'}</strong></span>
+          <span style={{ color: mText2, fontSize: 13 }}>by <strong style={{ color: mInk, fontFamily: 'var(--font-mono)' }}>{r.requester?.username || r.history[0]?.by || '—'}</strong></span>
         </span>
       }
       right={<>
         {canAct && <>
-          <SecondaryBtn danger onClick={() => setModal('REJECT')} icon={<MI.X size={14}/>}>Reject</SecondaryBtn>
-          <SecondaryBtn onClick={() => setModal('RETURN')} icon={<MI.Refresh size={14}/>}>Return</SecondaryBtn>
-          <PrimaryBtn success onClick={() => setModal('APPROVE')} icon={<MI.Check size={14}/>}>Approve</PrimaryBtn>
+          <SecondaryBtn danger disabled={busy} onClick={() => setModal('REJECT')} icon={<MI.X size={14}/>}>Reject</SecondaryBtn>
+          <SecondaryBtn disabled={busy} onClick={() => setModal('RETURN')} icon={<MI.Refresh size={14}/>}>Return</SecondaryBtn>
+          <PrimaryBtn success disabled={busy} onClick={onApprove} icon={<MI.Check size={14}/>}>{busy ? '…' : 'Approve'}</PrimaryBtn>
         </>}
         {canComplete && (
-          <PrimaryBtn success onClick={() => onAction(r.id, 'COMPLETE', '')} icon={<MI.Check size={14}/>}>Mark Complete</PrimaryBtn>
+          <PrimaryBtn success disabled={busy} onClick={onMarkComplete} icon={<MI.Check size={14}/>}>{busy ? '…' : 'Mark Complete'}</PrimaryBtn>
         )}
       </>}
     >
+      {actionError && (
+        <div style={{
+          padding: '12px 16px', marginBottom: 14, borderRadius: 10,
+          background: '#fde4e4', color: '#c0394a', fontSize: 13.5, fontWeight: 500,
+          border: '1px solid #f6c4c4',
+        }}>
+          {actionError}
+        </div>
+      )}
       <Card padding={0} style={{ marginBottom: 18 }}>
         <CardHeader>Overview</CardHeader>
         <div style={{
@@ -492,7 +629,7 @@ const MgrRequestDetail = ({ id, requests, navigate, onAction }) => {
             { label: 'Wafers',      value: r.samples.length },
             { label: 'Experiments', value: exps.length },
             { label: 'Submitted',   value: r.submitted?.split(' ')[0] || '—' },
-            { label: 'Requester',   value: r.history[0]?.by || 'fab_user' },
+            { label: 'Requester',   value: r.requester?.username || r.history[0]?.by || '—' },
           ].map(s => (
             <div key={s.label}>
               <div style={{ fontSize: 11, fontWeight: 600, color: mMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{s.label}</div>
@@ -539,7 +676,7 @@ const MgrRequestDetail = ({ id, requests, navigate, onAction }) => {
         <CardHeader>Samples · Experiments</CardHeader>
         <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
           {r.samples.map((s, si) => (
-            <button key={si} onClick={() => navigate({ page: 'lab_wafer', id: s.wafer })} style={{
+            <button key={si} onClick={() => navigate({ page: 'lab_wafer', id: s.id })} style={{
               display: 'grid', gridTemplateColumns: '180px 1fr 20px',
               alignItems: 'center', gap: 18,
               padding: '14px 18px', background: '#fff',
@@ -585,7 +722,7 @@ const MgrRequestDetail = ({ id, requests, navigate, onAction }) => {
         open={!!modal}
         action={modal}
         onClose={() => setModal(null)}
-        onSubmit={(reason) => { onAction(r.id, modal, reason); setModal(null); navigate({ page: 'mgr_all_requests' }); }}
+        onSubmit={onSubmitModal}
       />
     </Page>
   );
@@ -1203,8 +1340,8 @@ const MgrApp = ({ route, navigate }) => {
   let page = null;
   const p = route.page;
   if (p === 'mgr_dashboard')      page = <MgrDashboard requests={requests} recipes={recipes} navigate={navigate}/>;
-  else if (p === 'mgr_all_requests') page = <MgrAllRequests requests={requests} navigate={navigate}/>;
-  else if (p === 'mgr_request')   page = <MgrRequestDetail id={route.id} requests={requests} navigate={navigate} onAction={onAction}/>;
+  else if (p === 'mgr_all_requests') page = <MgrAllRequests navigate={navigate}/>;
+  else if (p === 'mgr_request')   page = <MgrRequestDetail id={route.id} navigate={navigate} showToast={showToast}/>;
   else if (p === 'mgr_recipes')   page = <MgrRecipes recipes={recipes} onCreate={createRecipe} onUpdate={updateRecipe} onDelete={deleteRecipe}/>;
   else if (p === 'mgr_reports')   page = <MgrReports requests={requests} recipes={recipes}/>;
   else page = <MgrDashboard requests={requests} recipes={recipes} navigate={navigate}/>;
