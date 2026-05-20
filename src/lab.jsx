@@ -62,6 +62,33 @@ const WIP_SEED = [
   { id: 'WIP-7698', equipmentId: 'QA-TCT-02',  experimentId: 'tct',  waferIds: ['W040701'],            note: '',                     status: 'completed',   createdAt: '2026-05-08 10:00', dispatchIds: ['DP-3300'] },
 ];
 
+// Data for the Add Dispatch modal: equipment filtered to those that can
+// run the parent WIP's experiment + recipes scoped to the same
+// experiment. Two parallel fetches, joined client-side. Re-runs when
+// experimentId changes (e.g. modal reopened against a different WIP).
+const useDispatchCreationData = (experimentId) => {
+  const [equipment, setEquipment] = lS([]);
+  const [recipes, setRecipes] = lS([]);
+  const [loading, setLoading] = lS(true);
+  const [error, setError] = lS(null);
+  React.useEffect(() => {
+    if (experimentId == null || !window.api) { setLoading(false); return; }
+    setLoading(true);
+    Promise.all([
+      window.api.equipment.list(),
+      window.api.recipes.list(),
+    ])
+      .then(([eqs, recs]) => {
+        setEquipment(eqs.filter(e => (e.capabilities || []).some(c => c.id === experimentId)));
+        setRecipes(recs.filter(r => r.experimentId === experimentId));
+        setError(null);
+      })
+      .catch(err => setError(err.message || String(err)))
+      .finally(() => setLoading(false));
+  }, [experimentId]);
+  return { equipment, recipes, loading, error };
+};
+
 // One-shot data fetch for the WIP-creation modal. Pulls the four pieces
 // of context the modal needs in parallel, then resolves per-request
 // `experiment_type_ids` for the eligibility filter (RequestListOut
@@ -1611,8 +1638,12 @@ const LabWipDetail = ({ id, navigate, showToast }) => {
     if (!window.confirm(`Abort ${w.code}? This cannot be undone.`)) return;
     runAction(() => window.api.wips.abort(w.id), `${w.code} aborted`);
   };
-  const onAddDispatch = () => {
-    showToast && showToast('Modal redesign pending');
+  const [addDispatchOpen, setAddDispatchOpen] = lS(false);
+  const onAddDispatch = () => setAddDispatchOpen(true);
+  const onDispatchCreated = () => {
+    setAddDispatchOpen(false);
+    showToast && showToast('Dispatch created');
+    refresh();
   };
 
   if (loading && !w) {
@@ -1696,15 +1727,15 @@ const LabWipDetail = ({ id, navigate, showToast }) => {
             ) : (
               <>
                 <div style={{
-                  display: 'grid', gridTemplateColumns: '80px 1.4fr 1.6fr 1.2fr 130px 80px',
+                  display: 'grid', gridTemplateColumns: '80px 1.4fr 1.4fr 1.1fr 80px 130px 80px',
                   padding: '10px 20px', borderBottom: `1px solid ${lineSoft}`, background: bgSoft,
                   fontSize: 11, fontWeight: 700, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em',
                 }}>
-                  <div>ID</div><div>Exp. Type</div><div>Recipe</div><div>Equipment</div><div>Status</div><div style={{ textAlign: 'right' }}>Action</div>
+                  <div>ID</div><div>Exp. Type</div><div>Recipe</div><div>Equipment</div><div>Est.</div><div>Status</div><div style={{ textAlign: 'right' }}>Action</div>
                 </div>
                 {w.dispatches.map(d => (
                   <div key={d.id} style={{
-                    display: 'grid', gridTemplateColumns: '80px 1.4fr 1.6fr 1.2fr 130px 80px',
+                    display: 'grid', gridTemplateColumns: '80px 1.4fr 1.4fr 1.1fr 80px 130px 80px',
                     alignItems: 'center', gap: 8,
                     padding: '13px 20px', borderTop: `1px solid ${lineSoft}`,
                   }}>
@@ -1712,6 +1743,7 @@ const LabWipDetail = ({ id, navigate, showToast }) => {
                     <span style={{ fontSize: 13, color: ink }}>{d.experimentName || '—'}</span>
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: text2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.recipeName || '—'}</span>
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: text2 }}>{d.equipmentName || '—'}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: text2 }}>{window.UI.formatDuration(d.estimatedDurationSeconds)}</span>
                     <span><Pill kind={d.status} dotted={d.status === 'running'}/></span>
                     <button onClick={() => navigate({ page: 'lab_dispatch_detail', id: d.id })} style={{
                       background: 'transparent', border: 'none', cursor: 'pointer',
@@ -1729,7 +1761,7 @@ const LabWipDetail = ({ id, navigate, showToast }) => {
                 Add Dispatch
               </div>
               <div style={{ fontSize: 13, color: text2, marginBottom: 14 }}>
-                The dispatch creation modal is pending design signoff.
+                Pick equipment + recipe to spin up a new dispatch on this WIP.
               </div>
               <PrimaryBtn icon={<LF.Plus size={14}/>} onClick={onAddDispatch}>Add Dispatch</PrimaryBtn>
             </Card>
@@ -1766,7 +1798,207 @@ const LabWipDetail = ({ id, navigate, showToast }) => {
           </Card>
         </div>
       </div>
+
+      <AddDispatchModal
+        open={addDispatchOpen}
+        onClose={() => setAddDispatchOpen(false)}
+        wip={w}
+        onCreated={onDispatchCreated}
+      />
     </Page>
+  );
+};
+
+// ── Add Dispatch modal ─────────────────────────────────────────
+// Locked header (WIP / sample count / experiment) — equipment + recipe
+// pickers filtered by the parent WIP's experiment_type — optional
+// estimated-duration input with a 20s demo quick-fill — optional note.
+const AddDispatchModal = ({ open, onClose, wip, onCreated }) => {
+  if (!open || !wip) return null;
+  return <AddDispatchModalInner onClose={onClose} wip={wip} onCreated={onCreated}/>;
+};
+const AddDispatchModalInner = ({ onClose, wip, onCreated }) => {
+  const { equipment, recipes, loading, error: loadError } = useDispatchCreationData(wip.experimentId);
+  const [equipmentId, setEquipmentId] = lS('');
+  const [recipeId, setRecipeId] = lS('');
+  const [duration, setDuration] = lS(''); // string in the input, parsed to int on submit
+  const [note, setNote] = lS('');
+  const [busy, setBusy] = lS(false);
+  const [submitErr, setSubmitErr] = lS(null);
+
+  const selectedRecipe = recipes.find(r => r.id === recipeId);
+  const selectedEquipment = equipment.find(e => e.id === equipmentId);
+  const wipCode = `WIP-${String(wip.id).padStart(4, '0')}`;
+  const durationSec = duration === '' ? null : parseInt(duration, 10);
+  const durationValid = duration === '' || (Number.isFinite(durationSec) && durationSec > 0);
+  const valid = equipmentId !== '' && recipeId !== '' && durationValid && !loading;
+
+  const submit = async () => {
+    setBusy(true); setSubmitErr(null);
+    try {
+      await window.api.wips.createDispatch(wip.id, {
+        equipmentId,
+        recipeId,
+        estimatedDurationSeconds: duration === '' ? undefined : durationSec,
+        note: note.trim(),
+      });
+      onCreated && onCreated();
+    } catch (e) {
+      setSubmitErr(e.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Visual status warning for non-idle equipment — chosen still works.
+  const eqStatusChip = (e) => {
+    if (e.status === 'maintenance') {
+      return <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 7px', borderRadius: 999, background: '#fbe4e6', color: '#a93445', marginLeft: 6 }}>maint</span>;
+    }
+    return null;
+  };
+
+  return (
+    <Modal
+      open={true}
+      onClose={onClose}
+      title="Add Dispatch"
+      width={680}
+      footer={<>
+        <SecondaryBtn onClick={onClose} disabled={busy}>Cancel</SecondaryBtn>
+        <PrimaryBtn disabled={!valid || busy} onClick={submit}>
+          {busy ? 'Creating…' : 'Create Dispatch'}
+        </PrimaryBtn>
+      </>}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Locked context header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          padding: '12px 14px', borderRadius: 10,
+          background: '#f7f6fb', border: `1px solid ${line}`,
+        }}>
+          <span style={{
+            fontFamily: 'var(--font-mono)', fontSize: 12.5, fontWeight: 700,
+            padding: '4px 10px', borderRadius: 999,
+            background: '#ecebf3', color: '#4f4a8f',
+          }}>{wipCode}</span>
+          <span style={{ fontSize: 13, color: text2 }}>
+            <strong style={{ color: ink, fontFamily: 'var(--font-mono)' }}>{wip.sampleCount}</strong> sample{wip.sampleCount === 1 ? '' : 's'}
+          </span>
+          <span style={{ color: muted }}>·</span>
+          <span style={{ fontSize: 13, color: ink, fontWeight: 600 }}>{wip.experimentName || '—'}</span>
+        </div>
+
+        {(loadError || submitErr) && (
+          <div style={{
+            padding: '10px 12px', borderRadius: 8,
+            background: '#fde4e4', color: '#c0394a', fontSize: 13, fontWeight: 500,
+            border: '1px solid #f6c4c4',
+          }}>{loadError || submitErr}</div>
+        )}
+        {loading && (
+          <div style={{ padding: '12px', textAlign: 'center', color: muted, fontSize: 13 }}>Loading equipment + recipes…</div>
+        )}
+
+        <div>
+          <FieldLabel required>Equipment</FieldLabel>
+          <SelectInput
+            value={equipmentId === '' ? '' : String(equipmentId)}
+            onChange={(e) => setEquipmentId(e.target.value ? Number(e.target.value) : '')}
+          >
+            <option value="">— pick equipment —</option>
+            {equipment.map(e => (
+              <option key={e.id} value={e.id}>
+                {e.name} · {e.model || '—'}{e.status === 'maintenance' ? ' (maintenance)' : ''}
+              </option>
+            ))}
+          </SelectInput>
+          {selectedEquipment && eqStatusChip(selectedEquipment) && (
+            <div style={{ marginTop: 6, fontSize: 12, color: '#a93445' }}>
+              {selectedEquipment.name} is currently in maintenance — submission still allowed, but a tech check is advised.
+            </div>
+          )}
+          {!loading && equipment.length === 0 && (
+            <div style={{ marginTop: 6, fontSize: 12, color: '#a93445' }}>
+              No equipment capable of running this experiment.
+            </div>
+          )}
+        </div>
+
+        <div>
+          <FieldLabel required>Recipe</FieldLabel>
+          <SelectInput
+            value={recipeId === '' ? '' : String(recipeId)}
+            onChange={(e) => setRecipeId(e.target.value ? Number(e.target.value) : '')}
+          >
+            <option value="">— pick a recipe —</option>
+            {recipes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </SelectInput>
+          {!loading && recipes.length === 0 && (
+            <div style={{ marginTop: 6, fontSize: 12, color: '#a93445' }}>
+              No recipes for this experiment yet.
+            </div>
+          )}
+        </div>
+
+        {selectedRecipe && (
+          <div style={{
+            padding: '12px 14px', borderRadius: 10,
+            border: `1px solid ${line}`, background: '#fbfbfd',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: text2, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Recipe Parameters</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: muted }}>{selectedRecipe.name}</span>
+            </div>
+            {Object.entries(selectedRecipe.params || {}).length === 0 ? (
+              <div style={{ fontSize: 12.5, color: muted, fontStyle: 'italic' }}>No parameters.</div>
+            ) : (
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10,
+              }}>
+                {Object.entries(selectedRecipe.params).map(([k, v]) => (
+                  <div key={k} style={{
+                    padding: '8px 10px', background: '#fff',
+                    border: `1px solid ${lineSoft}`, borderRadius: 8,
+                  }}>
+                    <div style={{ fontSize: 10.5, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>{k.replace(/_/g, ' ')}</div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700, color: ink, marginTop: 3 }}>{typeof v === 'object' ? JSON.stringify(v) : String(v)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div>
+          <FieldLabel>Estimated duration (seconds)</FieldLabel>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <TextInput
+              type="number" min="1"
+              placeholder="e.g., 3600 (= 1 hour), 86400 (= 1 day)"
+              value={duration}
+              onChange={(e) => setDuration(e.target.value)}
+              style={{ flex: 1 }}
+            />
+            <button type="button" onClick={() => setDuration('20')} style={{
+              padding: '8px 12px', borderRadius: 999,
+              background: '#f5f5fa', color: accent, border: `1px solid ${line}`,
+              fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+              whiteSpace: 'nowrap',
+            }}>20s — demo</button>
+          </div>
+          <div style={{ fontSize: 12, color: muted, marginTop: 6 }}>
+            Leave blank if unknown. The countdown bar will show — if not set.
+          </div>
+        </div>
+
+        <div>
+          <FieldLabel>Note (optional)</FieldLabel>
+          <TextArea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Anything the operator should know."/>
+        </div>
+      </div>
+    </Modal>
   );
 };
 
@@ -1843,20 +2075,19 @@ const LabDispatchList = ({ navigate, defaultTab = 'active' }) => {
             <div style={{ fontSize: 14, fontWeight: 600, color: text2 }}>No dispatches</div>
           </Card>
         ) : filtered.map(d => {
-          // No `started_at` on the backend yet — fall back to `dispatchedAt`
-          // for the elapsed-since clock on running rows. Backend §2.7 still
-          // open (Recipe.estimated_duration_minutes is the planned source
-          // of the total-window number; we use 24h as a placeholder).
-          let pct = 0, remainLabel = null;
-          if (d.status === 'running' && d.dispatchedAt) {
-            const start = new Date(d.dispatchedAt.replace(' ', 'T')).getTime();
-            const elapsed = Math.max(0, Date.now() - start);
-            const total = 24 * 60 * 60 * 1000;
-            pct = Math.max(4, Math.min(96, (elapsed / total) * 100));
-            const remain = Math.max(0, total - elapsed);
-            const h = Math.floor(remain / 3600000);
-            const m = Math.floor((remain % 3600000) / 60000);
-            remainLabel = `~${h}h ${String(m).padStart(2,'0')}m remaining`;
+          // Live countdown formula — reads the dispatch's own
+          // estimated_duration_seconds (set at create-time via the
+          // Add Dispatch modal). Without an estimate we don't draw
+          // the bar — see formatDuration's "—" rendering below.
+          let pct = 0, remainLabel = null, showBar = false;
+          const totalSec = d.estimatedDurationSeconds || 0;
+          if (d.status === 'running' && d.dispatchedAtIso && totalSec > 0) {
+            const startMs = new Date(d.dispatchedAtIso).getTime();
+            const elapsedSec = Math.max(0, (Date.now() - startMs) / 1000);
+            pct = Math.min(100, (elapsedSec / totalSec) * 100);
+            const remainSec = Math.max(0, totalSec - elapsedSec);
+            remainLabel = `${window.UI.formatDuration(Math.ceil(remainSec))} left`;
+            showBar = true;
           }
           // Experiment chip uses initials when the local string-slug catalogue
           // can't match the integer id (same pattern as Lab WIP list).
@@ -1875,8 +2106,8 @@ const LabDispatchList = ({ navigate, defaultTab = 'active' }) => {
             >
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: '100px minmax(0,1fr) 130px 130px 140px 24px',
-                alignItems: 'center', gap: 18,
+                gridTemplateColumns: '100px minmax(0,1fr) 120px 120px 80px 130px 24px',
+                alignItems: 'center', gap: 14,
               }}>
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13.5, fontWeight: 700, color: ink, letterSpacing: '0.02em' }}>{d.code}</span>
                 <div style={{ minWidth: 0, display: 'inline-flex', alignItems: 'center', gap: 10 }}>
@@ -1894,6 +2125,7 @@ const LabDispatchList = ({ navigate, defaultTab = 'active' }) => {
                   {d.operator || '—'}
                 </span>
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, color: text2 }}>{d.equipmentName || '—'}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: text2 }} title="Estimated duration">{window.UI.formatDuration(d.estimatedDurationSeconds)}</span>
                 <span><Pill kind={d.status} dotted={d.status === 'running'}/></span>
                 <LF.ChevronRight size={15} color="#cbcbd6"/>
               </div>
@@ -1909,16 +2141,20 @@ const LabDispatchList = ({ navigate, defaultTab = 'active' }) => {
                         animation: 'pulse 1.4s ease-in-out infinite',
                       }}/>
                       Running · dispatched <span style={{ fontFamily: 'var(--font-mono)', color: ink }}>{d.dispatchedAt.split(' ')[1]}</span>
+                      <span style={{ color: muted }}>·</span>
+                      <span style={{ color: muted }}>est. {window.UI.formatDuration(d.estimatedDurationSeconds)}</span>
                     </span>
-                    <span style={{ fontFamily: 'var(--font-mono)', color: accent }}>{remainLabel}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', color: accent }}>{remainLabel || '—'}</span>
                   </div>
-                  <div style={{ position: 'relative', height: 6, background: '#f1eef9', borderRadius: 999, overflow: 'hidden' }}>
-                    <div style={{
-                      position: 'absolute', inset: 0, width: `${pct}%`,
-                      background: 'linear-gradient(90deg, #f4a8bf, #6c67b8)',
-                      borderRadius: 999,
-                    }}/>
-                  </div>
+                  {showBar && (
+                    <div style={{ position: 'relative', height: 6, background: '#f1eef9', borderRadius: 999, overflow: 'hidden' }}>
+                      <div style={{
+                        position: 'absolute', inset: 0, width: `${pct}%`,
+                        background: 'linear-gradient(90deg, #f4a8bf, #6c67b8)',
+                        borderRadius: 999,
+                      }}/>
+                    </div>
+                  )}
                 </div>
               )}
             </button>
@@ -1934,6 +2170,15 @@ const STATUS_FLOW = ['dispatched', 'pending', 'running', 'unloaded', 'result_rec
 
 const LabDispatchDetail = ({ id, navigate, showToast }) => {
   const { dispatch: d, loading, error, refresh } = useLabDispatchDetail(id);
+  // 1Hz tick to drive the countdown re-render while the dispatch is
+  // running. Mounts the timer only when needed so we don't churn on
+  // closed dispatches.
+  const [, setTick] = lS(0);
+  React.useEffect(() => {
+    if (d?.status !== 'running') return;
+    const h = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(h);
+  }, [d?.status]);
   const [recordOpen, setRecordOpen] = lS(false);
   const [busy, setBusy] = lS(false);
   const [actionError, setActionError] = lS(null);
@@ -2064,20 +2309,17 @@ const LabDispatchDetail = ({ id, navigate, showToast }) => {
             );
           })}
         </div>
-        {d.status === 'running' && d.dispatchedAt && (() => {
-          // Soft estimate — elapsed time vs an assumed 24h run window.
-          // No `started_at` on the backend; dispatchedAt is the closest
-          // approximation until that field lands (gap §2.7-adjacent).
-          const start = new Date(d.dispatchedAt.replace(' ', 'T')).getTime();
-          const elapsed = Math.max(0, Date.now() - start);
-          const total = 24 * 60 * 60 * 1000;
-          const pct = Math.max(4, Math.min(96, (elapsed / total) * 100));
-          const remainMs = Math.max(0, total - elapsed);
-          const fmt = (ms) => {
-            const h = Math.floor(ms / 3600000);
-            const m = Math.floor((ms % 3600000) / 60000);
-            return `${h}h ${String(m).padStart(2,'0')}m`;
-          };
+        {d.status === 'running' && d.dispatchedAtIso && (() => {
+          // Live countdown: elapsed / estimated_duration_seconds from the
+          // dispatch payload (operator sets it via the Add Dispatch modal).
+          // No estimate → no bar, the remaining label drops to "—".
+          // Read from `dispatchedAtIso` (full-precision ISO) — the formatted
+          // `dispatchedAt` only carries minutes and would skew short demos.
+          const totalSec = d.estimatedDurationSeconds || 0;
+          const startMs = new Date(d.dispatchedAtIso).getTime();
+          const elapsedSec = Math.max(0, (Date.now() - startMs) / 1000);
+          const pct = totalSec > 0 ? Math.min(100, (elapsedSec / totalSec) * 100) : 0;
+          const remainSec = Math.max(0, totalSec - elapsedSec);
           return (
             <div style={{ padding: '0 26px 22px', borderTop: `1px solid ${lineSoft}`, paddingTop: 18 }}>
               <div style={{
@@ -2091,28 +2333,38 @@ const LabDispatchDetail = ({ id, navigate, showToast }) => {
                     animation: 'pulse 1.4s ease-in-out infinite',
                   }}/>
                   Running · dispatched <span style={{ fontFamily: 'var(--font-mono)', color: ink }}>{d.dispatchedAt.split(' ')[1]}</span>
+                  <span style={{ color: muted }}>·</span>
+                  <span style={{ color: muted }}>est. {window.UI.formatDuration(d.estimatedDurationSeconds)}</span>
                 </span>
                 <span style={{ fontFamily: 'var(--font-mono)', color: accent, fontWeight: 700 }}>
-                  ~{fmt(remainMs)} remaining
+                  {totalSec > 0 ? `${window.UI.formatDuration(Math.ceil(remainSec))} remaining` : '—'}
                 </span>
               </div>
-              <div style={{ position: 'relative', height: 8, background: '#f1eef9', borderRadius: 999, overflow: 'hidden' }}>
-                <div style={{
-                  position: 'absolute', inset: 0, width: `${pct}%`,
-                  background: 'linear-gradient(90deg, #f4a8bf, #6c67b8)',
-                  borderRadius: 999, transition: 'width 0.3s',
-                }}/>
-                <div style={{
-                  position: 'absolute', top: -2, left: `calc(${pct}% - 6px)`,
-                  width: 12, height: 12, borderRadius: 999,
-                  background: '#fff', border: '2px solid #6c67b8',
-                  boxShadow: '0 0 0 0 rgba(108,103,184,0.4)',
-                  animation: 'ringpulse 1.8s ease-out infinite',
-                }}/>
-              </div>
-              <div style={{ fontSize: 11.5, color: muted, marginTop: 6, fontFamily: 'var(--font-mono)' }}>
-                {Math.round(pct)}% of estimated 24h cycle
-              </div>
+              {totalSec > 0 ? (
+                <>
+                  <div style={{ position: 'relative', height: 8, background: '#f1eef9', borderRadius: 999, overflow: 'hidden' }}>
+                    <div style={{
+                      position: 'absolute', inset: 0, width: `${pct}%`,
+                      background: 'linear-gradient(90deg, #f4a8bf, #6c67b8)',
+                      borderRadius: 999, transition: 'width 0.3s',
+                    }}/>
+                    <div style={{
+                      position: 'absolute', top: -2, left: `calc(${pct}% - 6px)`,
+                      width: 12, height: 12, borderRadius: 999,
+                      background: '#fff', border: '2px solid #6c67b8',
+                      boxShadow: '0 0 0 0 rgba(108,103,184,0.4)',
+                      animation: 'ringpulse 1.8s ease-out infinite',
+                    }}/>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: muted, marginTop: 6, fontFamily: 'var(--font-mono)' }}>
+                    {Math.round(pct)}% of {window.UI.formatDuration(totalSec)} estimate
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontSize: 12, color: muted, fontStyle: 'italic' }}>
+                  Estimated duration not set — countdown unavailable.
+                </div>
+              )}
             </div>
           );
         })()}
@@ -2142,6 +2394,8 @@ const LabDispatchDetail = ({ id, navigate, showToast }) => {
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: ink }}>{d.recipeName || '—'}</div>
               <div style={{ fontSize: 13, color: text2 }}>Operator</div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: ink }}>{d.operator || '—'}</div>
+              <div style={{ fontSize: 13, color: text2 }}>Est. Duration</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: ink }}>{window.UI.formatDuration(d.estimatedDurationSeconds)}</div>
               <div style={{ fontSize: 13, color: text2 }}>Dispatched At</div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: ink }}>{d.dispatchedAt || '—'}</div>
               <div style={{ fontSize: 13, color: text2 }}>Completed At</div>

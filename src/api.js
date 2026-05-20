@@ -247,8 +247,15 @@
       status: DISPATCH_STATUS_MAP[d.status] || d.status,
       raw_status: d.status,
       dispatchedAt: formatTimestamp(d.dispatched_at),
+      // Raw ISO timestamp kept alongside the formatted "YYYY-MM-DD HH:MM"
+      // value because the formatted form truncates to minute precision and
+      // breaks the dispatch countdown bar on short estimates (e.g. the 20s
+      // demo). Anyone doing elapsed math should read this one.
+      dispatchedAtIso: d.dispatched_at ?? null,
       completedAt: formatTimestamp(d.completed_at),
+      completedAtIso: d.completed_at ?? null,
       created: formatTimestamp(d.created_at),
+      estimatedDurationSeconds: d.estimated_duration_seconds ?? null,
       result: d.result ? {
         summary: d.result.summary,
         verdict: d.result.verdict,
@@ -596,12 +603,16 @@
           },
         }));
       },
-      async createDispatch(wipId, { equipmentId, recipeId, note = '' }) {
-        // payload = { equipment_id, recipe_id, note? }
+      async createDispatch(wipId, { equipmentId, recipeId, estimatedDurationSeconds, note = '' }) {
+        // payload = { equipment_id, recipe_id, estimated_duration_seconds?, note? }
         // experiment_type is derived server-side from the parent WIP.
+        const body = { equipment_id: equipmentId, recipe_id: recipeId, note };
+        if (estimatedDurationSeconds != null && estimatedDurationSeconds !== '') {
+          body.estimated_duration_seconds = estimatedDurationSeconds;
+        }
         return normalizeWip(await call(`/wips/${wipId}/dispatches/`, {
           method: 'POST',
-          body: { equipment_id: equipmentId, recipe_id: recipeId, note },
+          body,
         }));
       },
       async complete(id) {
@@ -628,8 +639,11 @@
           status: DISPATCH_STATUS_MAP[d.status] || d.status,
           raw_status: d.status,
           dispatchedAt: formatTimestamp(d.dispatched_at),
+          dispatchedAtIso: d.dispatched_at ?? null,
           completedAt: formatTimestamp(d.completed_at),
+          completedAtIso: d.completed_at ?? null,
           created: formatTimestamp(d.created_at),
+          estimatedDurationSeconds: d.estimated_duration_seconds ?? null,
         }));
       },
       async get(id) {

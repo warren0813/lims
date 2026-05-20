@@ -182,4 +182,22 @@ const EmptyState = ({ icon, title, message, action }) => (
   </div>
 );
 
-window.UI = { Card, SectionLabel, Badge, Button, IDChip, FlowDots, PriorityMarker, Avatar, EmptyState };
+// Human-friendly duration string. "1d 3h 5m", "20s", "—" for null.
+// Used by the dispatch countdown bar + every list/detail page that shows
+// est. duration or remaining time.
+function formatDuration(totalSec) {
+  if (totalSec == null) return '—';
+  if (totalSec === 0) return '0s';
+  const d = Math.floor(totalSec / 86400);
+  const h = Math.floor((totalSec % 86400) / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = Math.floor(totalSec % 60);
+  const parts = [];
+  if (d) parts.push(`${d}d`);
+  if (h) parts.push(`${h}h`);
+  if (m) parts.push(`${m}m`);
+  if (s && d === 0) parts.push(`${s}s`);
+  return parts.join(' ') || '0s';
+}
+
+window.UI = { Card, SectionLabel, Badge, Button, IDChip, FlowDots, PriorityMarker, Avatar, EmptyState, formatDuration };
