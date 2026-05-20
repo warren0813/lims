@@ -20,6 +20,9 @@ from django.apps import apps as django_apps
 _backfill_wip_experiment_type = importlib.import_module(
     "apps.wip.migrations.0008_backfill_wip_experiment_type"
 )
+_backfill_dispatch_equipment = importlib.import_module(
+    "apps.wip.migrations.0010_backfill_dispatch_equipment"
+)
 
 
 @pytest.mark.django_db
@@ -85,3 +88,51 @@ class TestWIPExperimentTypeBackfill:
 
         wip.refresh_from_db()
         assert wip.experiment_type is None
+
+
+@pytest.mark.django_db
+class TestDispatchEquipmentBackfill:
+    """Migration 0010_backfill_dispatch_equipment."""
+
+    def test_backfill_copies_from_parent_wip(self):
+        from apps.equipment.factories import EquipmentFactory, RecipeFactory
+        from apps.experiments.factories import ExperimentTypeFactory
+        from apps.wip.factories import DispatchFactory, WIPFactory
+
+        et = ExperimentTypeFactory()
+        equipment = EquipmentFactory()
+        recipe = RecipeFactory(equipment=equipment, experiment_type=et)
+        wip = WIPFactory(equipment=equipment)
+        dispatch = DispatchFactory(
+            wip=wip,
+            experiment_type=et,
+            recipe=recipe,
+            equipment=None,
+        )
+
+        _backfill_dispatch_equipment.forwards(django_apps, None)
+
+        dispatch.refresh_from_db()
+        assert dispatch.equipment_id == equipment.pk
+
+    def test_backfill_skips_dispatch_whose_wip_has_no_equipment(self):
+        from apps.equipment.factories import EquipmentFactory, RecipeFactory
+        from apps.experiments.factories import ExperimentTypeFactory
+        from apps.wip.factories import DispatchFactory, WIPFactory
+
+        et = ExperimentTypeFactory()
+        equipment = EquipmentFactory()
+        recipe = RecipeFactory(equipment=equipment, experiment_type=et)
+        # WIP without equipment (legacy state for in-flight rows).
+        wip = WIPFactory(equipment=None)
+        dispatch = DispatchFactory(
+            wip=wip,
+            experiment_type=et,
+            recipe=recipe,
+            equipment=None,
+        )
+
+        _backfill_dispatch_equipment.forwards(django_apps, None)
+
+        dispatch.refresh_from_db()
+        assert dispatch.equipment is None

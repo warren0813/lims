@@ -99,6 +99,13 @@ class Dispatch(models.Model):
         on_delete=models.PROTECT,
         related_name="dispatches",
     )
+    equipment = models.ForeignKey(
+        "equipment.Equipment",
+        on_delete=models.PROTECT,
+        related_name="dispatches",
+        null=True,
+        blank=True,
+    )
     recipe = models.ForeignKey(
         "equipment.Recipe",
         on_delete=models.PROTECT,

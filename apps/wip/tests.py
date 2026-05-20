@@ -228,6 +228,27 @@ class TestDispatch:
 
         assert Dispatch._meta.db_table == "dispatch"
 
+    def test_dispatch_equipment_optional_for_now(
+        self, lab_user, sample, experiment_type, equipment, recipe
+    ):
+        """Dispatch.equipment is a nullable FK during the layered migration.
+
+        The non-null tightening lands in a later commit; this commit only
+        introduces the column and backfills it from the parent WIP.
+        """
+        from apps.wip.models import WIP, Dispatch, WIPSample
+
+        wip = WIP.objects.create(equipment=equipment, created_by=lab_user)
+        WIPSample.objects.create(wip=wip, sample=sample)
+        dispatch = Dispatch.objects.create(
+            wip=wip,
+            experiment_type=experiment_type,
+            equipment=equipment,
+            recipe=recipe,
+            created_by=lab_user,
+        )
+        assert dispatch.equipment == equipment
+
 
 @pytest.mark.django_db
 class TestExperimentResult:
