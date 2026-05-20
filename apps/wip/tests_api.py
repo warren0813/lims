@@ -430,26 +430,27 @@ class TestWIPCreateDispatch:
     def test_create_dispatch_with_estimated_duration(
         self, client, auth_headers, lab_staff, wip, equipment, recipe
     ):
-        """Optional estimated_duration_minutes round-trips on the WIP-detail
-        response's nested dispatches array."""
+        """Optional estimated_duration_seconds round-trips on the WIP-detail
+        response's nested dispatches array. Uses a sub-minute value (the
+        demo case that drove switching from minutes to seconds)."""
         resp = client.post(
             f"/api/wips/{wip.pk}/dispatches/",
             data={
                 "equipment_id": equipment.pk,
                 "recipe_id": recipe.pk,
-                "estimated_duration_minutes": 240,
+                "estimated_duration_seconds": 20,
             },
             content_type="application/json",
             **auth_headers(lab_staff),
         )
         assert resp.status_code == 201, resp.json()
         nested = resp.json()["dispatches"][0]
-        assert nested["estimated_duration_minutes"] == 240
+        assert nested["estimated_duration_seconds"] == 20
 
     def test_create_dispatch_without_estimated_duration(
         self, client, auth_headers, lab_staff, wip, equipment, recipe
     ):
-        """estimated_duration_minutes is optional; the response carries
+        """estimated_duration_seconds is optional; the response carries
         null so the SPA can fall back to its hardcoded 24h default."""
         resp = client.post(
             f"/api/wips/{wip.pk}/dispatches/",
@@ -458,7 +459,7 @@ class TestWIPCreateDispatch:
             **auth_headers(lab_staff),
         )
         assert resp.status_code == 201, resp.json()
-        assert resp.json()["dispatches"][0]["estimated_duration_minutes"] is None
+        assert resp.json()["dispatches"][0]["estimated_duration_seconds"] is None
 
     def test_create_dispatch_rejects_non_positive_duration(
         self, client, auth_headers, lab_staff, wip, equipment, recipe
@@ -469,7 +470,7 @@ class TestWIPCreateDispatch:
             data={
                 "equipment_id": equipment.pk,
                 "recipe_id": recipe.pk,
-                "estimated_duration_minutes": 0,
+                "estimated_duration_seconds": 0,
             },
             content_type="application/json",
             **auth_headers(lab_staff),
@@ -624,16 +625,16 @@ class TestDispatchList:
     def test_list_dispatch_row_includes_estimated_duration(
         self, client, auth_headers, lab_staff, dispatch
     ):
-        """Each list row exposes estimated_duration_minutes (None when
+        """Each list row exposes estimated_duration_seconds (None when
         unset) so the SPA can show a per-dispatch countdown without a
         detail round-trip."""
-        dispatch.estimated_duration_minutes = 360
-        dispatch.save(update_fields=["estimated_duration_minutes"])
+        dispatch.estimated_duration_seconds = 21600  # 6 hours
+        dispatch.save(update_fields=["estimated_duration_seconds"])
 
         resp = client.get("/api/dispatches/", **auth_headers(lab_staff))
         assert resp.status_code == 200
         row = next(r for r in resp.json() if r["id"] == dispatch.pk)
-        assert row["estimated_duration_minutes"] == 360
+        assert row["estimated_duration_seconds"] == 21600
 
 
 @pytest.mark.django_db

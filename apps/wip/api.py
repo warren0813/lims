@@ -427,7 +427,7 @@ def create_dispatch(request: HttpRequest, wip_id: int, payload: DispatchIn):
             equipment=equipment,
             recipe=recipe,
             note=payload.note,
-            estimated_duration_minutes=payload.estimated_duration_minutes,
+            estimated_duration_seconds=payload.estimated_duration_seconds,
             created_by=request.auth,
         )
 
@@ -816,7 +816,7 @@ def redispatch(request: HttpRequest, dispatch_id: int):
             experiment_type=dispatch.experiment_type,
             equipment=dispatch.equipment,
             recipe=dispatch.recipe,
-            estimated_duration_minutes=dispatch.estimated_duration_minutes,
+            estimated_duration_seconds=dispatch.estimated_duration_seconds,
             created_by=request.auth,
         )
 

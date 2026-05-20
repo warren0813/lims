@@ -1420,7 +1420,7 @@ def dispatch_redispatch(request: HttpRequest, dispatch_id: int) -> HttpResponse:
             experiment_type=old_dispatch.experiment_type,
             equipment=old_dispatch.equipment,
             recipe=old_dispatch.recipe,
-            estimated_duration_minutes=old_dispatch.estimated_duration_minutes,
+            estimated_duration_seconds=old_dispatch.estimated_duration_seconds,
             note=f"Redispatch of #{old_dispatch.pk}",
             created_by=request.user,
         )
