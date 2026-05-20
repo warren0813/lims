@@ -62,6 +62,25 @@ const WIP_SEED = [
   { id: 'WIP-7698', equipmentId: 'QA-TCT-02',  experimentId: 'tct',  waferIds: ['W040701'],            note: '',                     status: 'completed',   createdAt: '2026-05-08 10:00', dispatchIds: ['DP-3300'] },
 ];
 
+// Live WIP detail. Calls /wips/:id/ and returns the normalized payload
+// (samples array + dispatches with equipment names inline). Exposes
+// `refresh` so the Complete / Abort buttons can re-render in place.
+const useLabWipDetail = (id) => {
+  const [wip, setWip] = lS(null);
+  const [loading, setLoading] = lS(true);
+  const [error, setError] = lS(null);
+  const refresh = React.useCallback(() => {
+    if (id == null || !window.api || !window.api.wips) { setLoading(false); return; }
+    setLoading(true);
+    window.api.wips.get(id)
+      .then(w => { setWip(w); setError(null); })
+      .catch(err => setError(err.message || String(err)))
+      .finally(() => setLoading(false));
+  }, [id]);
+  React.useEffect(() => { refresh(); }, [refresh]);
+  return { wip, loading, error, refresh };
+};
+
 // Live WIP list (read-only). Returns the normalized rows from /wips/;
 // both `sample_count` and `dispatch_count` are server-annotated on
 // `WIPListOut` so list rows render real numbers without per-row joins.
@@ -1253,37 +1272,74 @@ const LabWipList = ({ navigate, showToast }) => {
   );
 };
 
-// ── WIP detail (like screenshot 1) ──────────────────────────────
-const LabWipDetail = ({ id, wips, wafers, dispatches, equipment, navigate, onCreateDispatch, onCompleteWip, onAbortWip }) => {
-  const w = findWip(id, wips);
-  if (!w) return <Page title="WIP not found"/>;
-  const eq = w.equipmentId ? findEq(w.equipmentId, equipment) : null;
-  const exp = findExp(w.experimentId);
-  const wipDps = dispatchesOf(w.id, dispatches);
-  const wWafers = w.waferIds.map(wid => findWaf(wid, wafers)).filter(Boolean);
+// ── WIP detail ──────────────────────────────────────────────────
+const LabWipDetail = ({ id, navigate, showToast }) => {
+  const { wip: w, loading, error, refresh } = useLabWipDetail(id);
+  const [busy, setBusy] = lS(false);
+  const [actionError, setActionError] = lS(null);
 
-  // The WIP already has an experiment type — dispatches inherit it. Only choices
-  // left for a new dispatch: which piece of equipment, which recipe.
-  const eligibleEquipment = equipment.filter(e => e.type === exp?.code);
-  const firstFreeEq = eligibleEquipment.find(e => e.status !== 'maintenance' && (!e.currentWipId || e.currentWipId === w.id));
-  const [newEqId, setNewEqId] = lS(w.equipmentId || firstFreeEq?.id || '');
-  const [newRecipeId, setNewRecipeId] = lS(recipesFor(w.experimentId)[0]?.id || '');
-  const [newNote, setNewNote] = lS('');
-  const newRecipe = findRecipe(newRecipeId);
-
-  const handleCreate = () => {
-    if (!newRecipeId || !newEqId) return;
-    onCreateDispatch(w.id, { experimentId: w.experimentId, equipmentId: newEqId, recipeId: newRecipeId, note: newNote });
-    setNewNote('');
+  const runAction = async (op, label) => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await op();
+      showToast && showToast(label);
+      refresh();
+    } catch (e) {
+      setActionError(e.message || String(e));
+    } finally {
+      setBusy(false);
+    }
   };
+  const onComplete = () => {
+    if (!w) return;
+    if (!window.confirm(`Mark ${w.code} as complete? Active dispatches must already be in a terminal state.`)) return;
+    runAction(() => window.api.wips.complete(w.id), `${w.code} completed`);
+  };
+  const onAbort = () => {
+    if (!w) return;
+    if (!window.confirm(`Abort ${w.code}? This cannot be undone.`)) return;
+    runAction(() => window.api.wips.abort(w.id), `${w.code} aborted`);
+  };
+  const onAddDispatch = () => {
+    showToast && showToast('Modal redesign pending');
+  };
+
+  if (loading && !w) {
+    return (
+      <Page title="Loading WIP…">
+        <div style={{ padding: '60px 20px', textAlign: 'center', color: muted, fontSize: 14 }}>Loading…</div>
+      </Page>
+    );
+  }
+  if (error || !w) {
+    return (
+      <Page
+        breadcrumb={<Breadcrumb items={[
+          { label: 'WIP', onClick: () => navigate({ page: 'lab_wip' }) },
+          { label: '?' },
+        ]}/>}
+        title="WIP not found"
+      >
+        <div style={{ padding: 24, color: '#c0394a', fontSize: 14 }}>
+          {error || 'This WIP is no longer available.'}
+        </div>
+      </Page>
+    );
+  }
+
+  // The experiment-type chip uses initials when no local string-slug match
+  // exists (live ids are integers; the EXPERIMENTS catalogue is string-keyed).
+  const expCode = (findExp(w.experimentId)?.code) || (w.experimentName ? w.experimentName.split(/\s+/).map(t => t[0]).join('').slice(0, 4).toUpperCase() : '—');
+  const isActive = w.status === 'in_progress';
 
   return (
     <Page
       breadcrumb={<Breadcrumb items={[
         { label: 'WIP', onClick: () => navigate({ page: 'lab_wip' }) },
-        { label: w.id },
+        { label: w.code },
       ]}/>}
-      title={w.id}
+      title={w.code}
       subtitle={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <Pill kind={w.status} dotted={w.status === 'in_progress'}/>
         <span style={{
@@ -1295,135 +1351,77 @@ const LabWipDetail = ({ id, wips, wafers, dispatches, equipment, navigate, onCre
           <span style={{
             fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999,
             background: '#fff', color: '#4f4a8f', letterSpacing: '0.05em',
-          }}>{exp?.code}</span>
-          {exp?.name}
+          }}>{expCode}</span>
+          {w.experimentName || '—'}
         </span>
-        {w.equipmentId
-          ? <span style={{ color: text2, fontSize: 13 }}>Equipment: <strong style={{ color: ink, fontFamily: 'var(--font-mono)' }}>{w.equipmentId}</strong></span>
-          : <span style={{ color: muted, fontSize: 13, fontStyle: 'italic' }}>Equipment not yet assigned</span>}
-        <span style={{ color: muted, fontSize: 13 }}>· {w.waferIds.length} wafer{w.waferIds.length === 1 ? '' : 's'}</span>
+        <span style={{ color: muted, fontSize: 13 }}>· {w.sampleCount} sample{w.sampleCount === 1 ? '' : 's'}</span>
+        {w.created && <span style={{ color: muted, fontSize: 13 }}>· created {w.created.split(' ')[0]}</span>}
       </span>}
-      right={w.status === 'in_progress' && <>
-        <SecondaryBtn danger onClick={() => onAbortWip(w.id)}>Abort</SecondaryBtn>
-        <PrimaryBtn success onClick={() => onCompleteWip(w.id)} icon={<LF.Check size={14}/>}>Complete WIP</PrimaryBtn>
+      right={isActive && <>
+        <SecondaryBtn danger onClick={onAbort} disabled={busy}>{busy ? '…' : 'Abort'}</SecondaryBtn>
+        <PrimaryBtn success onClick={onComplete} disabled={busy} icon={<LF.Check size={14}/>}>{busy ? 'Working…' : 'Complete WIP'}</PrimaryBtn>
       </>}
     >
+      {actionError && (
+        <div style={{
+          padding: '12px 16px', marginBottom: 14, borderRadius: 10,
+          background: '#fde4e4', color: '#c0394a', fontSize: 13.5, fontWeight: 500,
+          border: '1px solid #f6c4c4',
+        }}>
+          {actionError}
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 320px', gap: 18, alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           <Card padding={0}>
-            <CardHeader>Dispatches</CardHeader>
-            {wipDps.length === 0 ? (
-              <div style={{ padding: '28px 20px', textAlign: 'center', color: muted, fontSize: 13 }}>No dispatches yet — create one below</div>
+            <CardHeader>
+              <span>Dispatches</span>
+              <span style={{ marginLeft: 'auto', fontSize: 11, color: muted, fontWeight: 600 }}>{w.dispatches.length}</span>
+            </CardHeader>
+            {w.dispatches.length === 0 ? (
+              <div style={{ padding: '28px 20px', textAlign: 'center', color: muted, fontSize: 13 }}>
+                No dispatches yet{isActive ? ' — use Add Dispatch above to create one' : ''}
+              </div>
             ) : (
               <>
                 <div style={{
-                  display: 'grid', gridTemplateColumns: '70px 1.4fr 1.6fr 130px 80px',
+                  display: 'grid', gridTemplateColumns: '80px 1.4fr 1.6fr 1.2fr 130px 80px',
                   padding: '10px 20px', borderBottom: `1px solid ${lineSoft}`, background: bgSoft,
                   fontSize: 11, fontWeight: 700, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em',
                 }}>
-                  <div>ID</div><div>Exp. Type</div><div>Recipe</div><div>Status</div><div style={{ textAlign: 'right' }}>Action</div>
+                  <div>ID</div><div>Exp. Type</div><div>Recipe</div><div>Equipment</div><div>Status</div><div style={{ textAlign: 'right' }}>Action</div>
                 </div>
-                {wipDps.map(d => {
-                  const rec = findRecipe(d.recipeId);
-                  return (
-                    <div key={d.id} style={{
-                      display: 'grid', gridTemplateColumns: '70px 1.4fr 1.6fr 130px 80px',
-                      alignItems: 'center', gap: 8,
-                      padding: '13px 20px', borderTop: `1px solid ${lineSoft}`,
-                    }}>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, color: muted }}>#{d.id.replace('DP-','')}</span>
-                      <span style={{ fontSize: 13, color: ink }}>{findExp(d.experimentId)?.name}</span>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: text2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rec?.name}</span>
-                      <span><Pill kind={d.status} dotted={d.status === 'running'}/></span>
-                      <button onClick={() => navigate({ page: 'lab_dispatch_detail', id: d.id })} style={{
-                        background: 'transparent', border: 'none', cursor: 'pointer',
-                        color: accent, fontWeight: 600, fontSize: 12.5, textAlign: 'right', padding: 0, fontFamily: 'inherit',
-                      }}>Manage</button>
-                    </div>
-                  );
-                })}
+                {w.dispatches.map(d => (
+                  <div key={d.id} style={{
+                    display: 'grid', gridTemplateColumns: '80px 1.4fr 1.6fr 1.2fr 130px 80px',
+                    alignItems: 'center', gap: 8,
+                    padding: '13px 20px', borderTop: `1px solid ${lineSoft}`,
+                  }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, color: muted }}>{d.code}</span>
+                    <span style={{ fontSize: 13, color: ink }}>{d.experimentName || '—'}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: text2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.recipeName || '—'}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: text2 }}>{d.equipmentName || '—'}</span>
+                    <span><Pill kind={d.status} dotted={d.status === 'running'}/></span>
+                    <button onClick={() => navigate({ page: 'lab_dispatch_detail', id: d.id })} style={{
+                      background: 'transparent', border: 'none', cursor: 'pointer',
+                      color: accent, fontWeight: 600, fontSize: 12.5, textAlign: 'right', padding: 0, fontFamily: 'inherit',
+                    }}>Manage</button>
+                  </div>
+                ))}
               </>
             )}
           </Card>
 
-          {w.status === 'in_progress' && (
-            <Card padding={0}>
-              <CardHeader>Add Dispatch</CardHeader>
-              <div style={{ padding: 22 }}>
-                {/* Experiment is fixed at WIP creation — display it, don't repick. */}
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '12px 14px', borderRadius: 10,
-                  background: '#f7f6fb', border: `1px solid ${line}`,
-                  marginBottom: 14,
-                }}>
-                  <span style={{
-                    fontSize: 10.5, fontWeight: 700, padding: '3px 8px', borderRadius: 999,
-                    background: '#ecebf3', color: '#4f4a8f', letterSpacing: '0.05em',
-                  }}>{exp?.code}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: text2, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Experiment (from WIP)</div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: ink, marginTop: 2 }}>{exp?.name}</div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-                  <div>
-                    <FieldLabel required>Equipment</FieldLabel>
-                    <SelectInput value={newEqId} onChange={(e) => setNewEqId(e.target.value)}>
-                      <option value="">— select equipment —</option>
-                      {eligibleEquipment.map(e => (
-                        <option key={e.id} value={e.id} disabled={e.status === 'maintenance' || (e.currentWipId && e.currentWipId !== w.id)}>
-                          {e.id} · {e.model} {e.status === 'maintenance' ? '(maintenance)' : (e.currentWipId && e.currentWipId !== w.id) ? '(busy)' : ''}
-                        </option>
-                      ))}
-                    </SelectInput>
-                    {eligibleEquipment.length === 0 && (
-                      <div style={{ fontSize: 12, color: '#a93445', marginTop: 6 }}>No equipment of type {exp?.code} available.</div>
-                    )}
-                  </div>
-                  <div>
-                    <FieldLabel required>Recipe</FieldLabel>
-                    <SelectInput value={newRecipeId} onChange={(e) => setNewRecipeId(e.target.value)}>
-                      {recipesFor(w.experimentId).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                      {recipesFor(w.experimentId).length === 0 && <option value="">No recipes available</option>}
-                    </SelectInput>
-                  </div>
-                </div>
-
-                {/* Recipe parameter preview — expands once a recipe is chosen */}
-                {newRecipe && (
-                  <div style={{
-                    padding: '14px 16px', marginBottom: 14,
-                    border: `1px solid ${line}`, borderRadius: 10,
-                    background: '#fbfbfd',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: text2, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Recipe Parameters</span>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: muted }}>{newRecipe.name}</span>
-                    </div>
-                    <div style={{
-                      display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12,
-                    }}>
-                      {Object.entries(newRecipe.params).map(([k, v]) => (
-                        <div key={k} style={{
-                          padding: '8px 10px', background: '#fff',
-                          border: `1px solid ${lineSoft}`, borderRadius: 8,
-                        }}>
-                          <div style={{ fontSize: 10.5, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>{k.replace(/_/g, ' ')}</div>
-                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700, color: ink, marginTop: 3 }}>{v}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div style={{ marginBottom: 14 }}>
-                  <FieldLabel>Note</FieldLabel>
-                  <TextInput placeholder="Optional" value={newNote} onChange={(e) => setNewNote(e.target.value)}/>
-                </div>
-                <PrimaryBtn onClick={handleCreate} disabled={!newRecipeId || !newEqId}>Create Dispatch</PrimaryBtn>
+          {isActive && (
+            <Card padding={22} style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 11.5, color: muted, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+                Add Dispatch
               </div>
+              <div style={{ fontSize: 13, color: text2, marginBottom: 14 }}>
+                The dispatch creation modal is pending design signoff.
+              </div>
+              <PrimaryBtn icon={<LF.Plus size={14}/>} onClick={onAddDispatch}>Add Dispatch</PrimaryBtn>
             </Card>
           )}
 
@@ -1437,34 +1435,18 @@ const LabWipDetail = ({ id, wips, wafers, dispatches, equipment, navigate, onCre
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           <Card padding={0}>
-            <CardHeader>Equipment</CardHeader>
-            {eq ? (
-              <div style={{ padding: 22, display: 'grid', gridTemplateColumns: '90px 1fr', rowGap: 10 }}>
-                <div style={{ fontSize: 12.5, color: text2 }}>Name</div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13.5, fontWeight: 700, color: ink }}>{eq.id}</div>
-                <div style={{ fontSize: 12.5, color: text2 }}>Model</div>
-                <div style={{ fontSize: 13.5, color: ink }}>{eq.model}</div>
-                <div style={{ fontSize: 12.5, color: text2 }}>Capacity</div>
-                <div style={{ fontSize: 13.5, color: ink }}>{wWafers.length}/{eq.capacity} wafers</div>
-              </div>
-            ) : (
-              <div style={{ padding: '22px 22px', color: muted, fontSize: 13 }}>
-                No equipment yet. Create a dispatch to assign one.
-              </div>
-            )}
-          </Card>
-
-          <Card padding={0}>
-            <CardHeader>Samples ({wWafers.length})</CardHeader>
+            <CardHeader>Samples ({w.samples.length})</CardHeader>
             <div>
-              {wWafers.map(s => (
+              {w.samples.length === 0 ? (
+                <div style={{ padding: '20px 22px', color: muted, fontSize: 13 }}>No samples on this WIP.</div>
+              ) : w.samples.map(s => (
                 <button key={s.id} onClick={() => navigate({ page: 'lab_wafer', id: s.id })} style={{
                   width: '100%', display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 8,
                   padding: '13px 20px', borderTop: `1px solid ${lineSoft}`,
                   background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
                 }}>
                   <div>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700, color: ink }}>{s.id}</div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700, color: ink }}>{s.wafer}</div>
                     <div style={{ fontSize: 11.5, color: muted, marginTop: 2 }}>{s.size} — Req #{String(s.requestId).padStart(4,'0')}</div>
                   </div>
                   <Pill kind={s.status}/>
@@ -2306,8 +2288,7 @@ const LabApp = ({ route, navigate, canManage = false }) => {
   else if (p === 'lab_wip' || p === 'wip')
     page = <LabWipList navigate={navigate} showToast={showToast}/>;
   else if (p === 'lab_wip_detail')
-    page = <LabWipDetail id={route.id} wips={wips} wafers={wafers} dispatches={dispatches} equipment={equipment} navigate={navigate}
-      onCreateDispatch={createDispatch} onCompleteWip={onCompleteWip} onAbortWip={onAbortWip}/>;
+    page = <LabWipDetail id={route.id} navigate={navigate} showToast={showToast}/>;
   else if (p === 'lab_dispatches' || p === 'dispatches')
     page = <LabDispatchList dispatches={dispatches} wips={wips} navigate={navigate} defaultTab={route.tab || 'active'}/>;
   else if (p === 'lab_dispatch_detail')
