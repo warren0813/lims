@@ -62,6 +62,35 @@ const WIP_SEED = [
   { id: 'WIP-7698', equipmentId: 'QA-TCT-02',  experimentId: 'tct',  waferIds: ['W040701'],            note: '',                     status: 'completed',   createdAt: '2026-05-08 10:00', dispatchIds: ['DP-3300'] },
 ];
 
+// Live tile-count fetch for the Lab Dashboard. Mirrors the fab dashboard's
+// useRequests pattern but pulls three lists in parallel so the four count
+// tiles (Incoming wafers / Active WIPs / Dispatches live / To record) all
+// reflect the same snapshot. Returns the raw normalized lists; the
+// dashboard derives the counts client-side.
+const useLabDashboardData = () => {
+  const [samples, setSamples] = lS([]);
+  const [wips, setWips] = lS([]);
+  const [dispatches, setDispatches] = lS([]);
+  const [loading, setLoading] = lS(true);
+  const [error, setError] = lS(null);
+  const refresh = React.useCallback(() => {
+    if (!window.api) { setLoading(false); return; }
+    setLoading(true);
+    Promise.all([
+      window.api.samples.list(),
+      window.api.wips.list(),
+      window.api.dispatches.list(),
+    ])
+      .then(([ss, ws, ds]) => {
+        setSamples(ss); setWips(ws); setDispatches(ds); setError(null);
+      })
+      .catch(err => setError(err.message || String(err)))
+      .finally(() => setLoading(false));
+  }, []);
+  React.useEffect(() => { refresh(); }, [refresh]);
+  return { samples, wips, dispatches, loading, error, refresh };
+};
+
 // Live samples list. Co-fetches /requests/ so each row can show the
 // urgency window (urgency lives on the parent request, not the sample —
 // see INTEGRATION_GAPS.md §3.7). Returns frontend-shaped wafers with the
@@ -499,20 +528,28 @@ const EquipmentDots = ({ used, capacity }) => {
 };
 
 const LabDashboard = ({ wafers, wips, dispatches, equipment, navigate }) => {
-  const incoming   = wafers.filter(w => w.status === 'incoming').length;
-  const activeWips = wips.filter(w => w.status === 'in_progress').length;
-  const runningDps = dispatches.filter(d => d.status === 'running').length;
-  const needsRecord= dispatches.filter(d => d.status === 'unloaded' || d.status === 'exception').length;
-  const counts = { incoming, activeWips, running: runningDps, needsRecord };
+  // Tile counts come from a live fetch (samples + wips + dispatches in
+  // parallel). The lower panels — Now Running, Awaiting Your Result,
+  // Equipment — still render from the seed-fed props until those sections
+  // get their own wiring pass.
+  const { samples: liveSamples, wips: liveWips, dispatches: liveDispatches, loading: countsLoading, error: countsError } = useLabDashboardData();
+  const incoming   = liveSamples.filter(s => s.status === 'incoming').length;
+  const activeWips = liveWips.filter(w => w.status === 'in_progress').length;
+  const runningDps = liveDispatches.filter(d => d.status === 'running').length;
+  const needsRecord= liveDispatches.filter(d => d.status === 'unloaded' || d.status === 'exception').length;
 
   const activeDispatches = dispatches.filter(d => d.status === 'running' || d.status === 'pending');
   const toRecord = dispatches.filter(d => d.status === 'unloaded' || d.status === 'exception');
 
+  // While the initial fetch is in flight, render "—" on the tiles rather
+  // than the misleading "0" that an empty filter would produce.
+  const initialLoad = countsLoading && liveSamples.length === 0 && liveWips.length === 0 && liveDispatches.length === 0;
+  const v = (n) => initialLoad ? '—' : n;
   const tiles = [
-    { label: 'Incoming wafers', value: incoming,    onClick: () => navigate({ page: 'lab_samples', tab: 'incoming' }), icon: <LF.Inbox size={16} color="#a06618"/>, tint: '#fef4dd' },
-    { label: 'Active WIPs',     value: activeWips,  onClick: () => navigate({ page: 'lab_wip' }),                       icon: <LF.WIP   size={16} color="#4f4a8f"/>, tint: '#ecebf3' },
-    { label: 'Dispatches live', value: runningDps,  onClick: () => navigate({ page: 'lab_dispatches', tab: 'active' }), icon: <LF.Activity size={16} color="#a93445"/>, tint: '#fbe4e6' },
-    { label: 'To record',       value: needsRecord, onClick: () => navigate({ page: 'lab_dispatches', tab: 'record' }), icon: <LF.ClipboardList size={16} color="#2e6a47"/>, tint: '#e7f0e9' },
+    { label: 'Incoming wafers', value: v(incoming),    onClick: () => navigate({ page: 'lab_samples', tab: 'incoming' }), icon: <LF.Inbox size={16} color="#a06618"/>, tint: '#fef4dd' },
+    { label: 'Active WIPs',     value: v(activeWips),  onClick: () => navigate({ page: 'lab_wip' }),                       icon: <LF.WIP   size={16} color="#4f4a8f"/>, tint: '#ecebf3' },
+    { label: 'Dispatches live', value: v(runningDps),  onClick: () => navigate({ page: 'lab_dispatches', tab: 'active' }), icon: <LF.Activity size={16} color="#a93445"/>, tint: '#fbe4e6' },
+    { label: 'To record',       value: v(needsRecord), onClick: () => navigate({ page: 'lab_dispatches', tab: 'record' }), icon: <LF.ClipboardList size={16} color="#2e6a47"/>, tint: '#e7f0e9' },
   ];
 
   return (
@@ -520,6 +557,15 @@ const LabDashboard = ({ wafers, wips, dispatches, equipment, navigate }) => {
       title="Dashboard"
       subtitle={`Welcome back, lab_member · ${TODAY}`}
     >
+      {countsError && (
+        <div style={{
+          padding: '12px 16px', marginBottom: 14, borderRadius: 10,
+          background: '#fde4e4', color: '#c0394a', fontSize: 13.5, fontWeight: 500,
+          border: '1px solid #f6c4c4',
+        }}>
+          Couldn't load tile counts: {countsError}
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 22 }}>
         {tiles.map(t => (
           <button key={t.label} onClick={t.onClick} style={{
