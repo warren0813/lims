@@ -6,7 +6,7 @@ const { useState: lS, useMemo: lM } = React;
 const LF = window.I;
 
 // ── Domain ──────────────────────────────────────────────────────
-const TODAY = '2026-05-11';
+const TODAY = new Date().toISOString().slice(0, 10);
 
 const EXPERIMENTS = [
   { id: 'tct',  code: 'TCT',  name: 'Temperature Cycling Test' },
@@ -427,16 +427,18 @@ const accent  = '#6c67b8';
 
 const PILL = {
   // wafer
-  incoming:  { label: 'Incoming',  bg: '#fef4dd', fg: '#a06618' },
-  received:  { label: 'Received',  bg: '#e7f0e9', fg: '#2e6a47' },
-  rejected:  { label: 'Rejected',  bg: '#fbe4e6', fg: '#a93445' },
-  in_wip:    { label: 'In WIP',    bg: '#ecebf3', fg: '#4f4a8f' },
-  completed: { label: 'Completed', bg: '#dbeafe', fg: '#1d4ed8' },
+  incoming:   { label: 'Incoming',   bg: '#fef4dd', fg: '#a06618' },
+  received:   { label: 'Received',   bg: '#e7f0e9', fg: '#2e6a47' },
+  rejected:   { label: 'Rejected',   bg: '#fbe4e6', fg: '#a93445' },
+  in_wip:     { label: 'In WIP',     bg: '#ecebf3', fg: '#4f4a8f' },
+  processing: { label: 'Processing', bg: '#ecebf3', fg: '#4f4a8f' },
+  completed:  { label: 'Completed',  bg: '#dbeafe', fg: '#1d4ed8' },
   // urgency
   '3d':      { label: '3 Days',    bg: '#fbe4e6', fg: '#a93445' },
   '1w':      { label: '1 Week',    bg: '#ecebf3', fg: '#4f4a8f' },
   '2w':      { label: '2 Weeks',   bg: '#eef0ed', fg: '#4d5a4f' },
   // wip
+  created:     { label: 'Created',     bg: '#ecebf3', fg: '#4f4a8f' },
   in_progress: { label: 'In Progress', bg: '#ecebf3', fg: '#4f4a8f' },
   aborted:     { label: 'Aborted',     bg: '#fbe4e6', fg: '#a93445' },
   // dispatch
@@ -1030,9 +1032,6 @@ const LabDashboard = ({ navigate }) => {
 // defines the window (3 Days / 1 Week / 2 Weeks). Rows tinted red are
 // at or past the deadline.
 const URGENCY_DAYS = { '3d': 3, '1w': 7, '2w': 14 };
-// Pinned "now" so the demo data is meaningful regardless of when the file is
-// opened — matches the TODAY const used elsewhere on the lab side.
-const TODAY_MS = new Date(TODAY + 'T12:00:00').getTime();
 const computeRemaining = (w) => {
   // No arrival timestamp — countdown can't start. Catches samples that
   // jumped to a terminal state (`lost` / `voided` / `returned` /
@@ -1047,7 +1046,7 @@ const computeRemaining = (w) => {
   const days = URGENCY_DAYS[w.urgency] ?? 7;
   const start = new Date(w.arrivedAt.replace(' ', 'T') + ':00').getTime();
   const deadline = start + days * 86400000;
-  return deadline - TODAY_MS;
+  return deadline - Date.now();
 };
 const formatRemaining = (ms) => {
   if (ms == null) return { text: '—', level: 'none' };
@@ -1453,7 +1452,16 @@ const LabWaferDetail = ({ id, navigate, showToast }) => {
             { k: 'in_wip',    l: 'Processing' },
             { k: 'completed', l: 'Experiment(s) done' },
           ].map((s, i, arr) => {
-            const order = { incoming: 0, received: 1, in_wip: 2, completed: 3, rejected: 1 };
+            const order = {
+              incoming:   0,
+              received:   1,
+              in_wip:     2,
+              processing: 2,
+              completed:  3,
+              rejected:   1,
+              cancelled:  1,
+              returned:   1,
+            };
             const cur = order[w.status] ?? 0;
             const reached = i <= cur && w.status !== 'rejected';
             return (
@@ -1487,10 +1495,13 @@ const LabWipList = ({ navigate, showToast }) => {
   const { wips, loading, error, refresh } = useLabWips();
   const [tab, setTab] = lS('active');
   const [modalOpen, setModalOpen] = lS(false);
+  // Active = anything not yet terminal (created + in_progress).
+  // Completed = terminal states (completed + aborted).
+  const isWipActive = (w) => w.status !== 'completed' && w.status !== 'aborted';
   const filtered = tab === 'active'
-    ? wips.filter(w => w.status === 'in_progress')
+    ? wips.filter(isWipActive)
     : tab === 'completed'
-      ? wips.filter(w => w.status !== 'in_progress')
+      ? wips.filter(w => !isWipActive(w))
       : wips;
 
   const openModal = () => setModalOpen(true);
@@ -1529,8 +1540,8 @@ const LabWipList = ({ navigate, showToast }) => {
       )}
       <div style={{ display: 'flex', gap: 4, marginBottom: 14, borderBottom: `1px solid ${line}` }}>
         {[
-          { id: 'active',    label: 'Active',    n: wips.filter(w => w.status === 'in_progress').length },
-          { id: 'completed', label: 'Completed', n: wips.filter(w => w.status !== 'in_progress').length },
+          { id: 'active',    label: 'Active',    n: wips.filter(isWipActive).length },
+          { id: 'completed', label: 'Completed', n: wips.filter(w => !isWipActive(w)).length },
           { id: 'all',       label: 'All',       n: wips.length },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
@@ -1838,7 +1849,7 @@ const LabWipDetail = ({ id, navigate, showToast }) => {
   // The experiment-type chip uses initials when no local string-slug match
   // exists (live ids are integers; the EXPERIMENTS catalogue is string-keyed).
   const expCode = (findExp(w.experimentId)?.code) || (w.experimentName ? w.experimentName.split(/\s+/).map(t => t[0]).join('').slice(0, 4).toUpperCase() : '—');
-  const isActive = w.status === 'in_progress';
+  const isActive = w.status !== 'completed' && w.status !== 'aborted';
 
   return (
     <Page
