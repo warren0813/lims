@@ -152,14 +152,14 @@ def unloaded_dispatch(dispatch):
 
 @pytest.fixture
 def result_recorded_dispatch(dispatch):
-    """A dispatch in result_recorded state with an ExperimentResult."""
+    """A dispatch in result_recorded state with an ExperimentResult.
+
+    Kept around for backward-compat tests; new flow lands dispatches
+    in COMPLETED directly via record_result.
+    """
     dispatch.status = DispatchStatus.RESULT_RECORDED
     dispatch.save()
-    ExperimentResult.objects.create(
-        dispatch=dispatch,
-        summary="Test result",
-        verdict=ExperimentResult.Verdict.PASS,
-    )
+    ExperimentResult.objects.create(dispatch=dispatch, comment="Test result")
     return dispatch
 
 
@@ -802,7 +802,12 @@ class TestDispatchDetail:
     def test_get_dispatch_with_result(
         self, client, auth_headers, lab_staff, result_recorded_dispatch
     ):
-        """Dispatch detail includes experiment result when present."""
+        """Dispatch detail includes experiment result when present.
+
+        Verdict no longer lives on the dispatch result — it's per-wafer
+        on SampleExperimentStatus. The result block carries just the
+        operator comment.
+        """
         resp = client.get(
             f"/api/dispatches/{result_recorded_dispatch.pk}/",
             **auth_headers(lab_staff),
@@ -810,7 +815,8 @@ class TestDispatchDetail:
         assert resp.status_code == 200
         data = resp.json()
         assert data["result"] is not None
-        assert data["result"]["verdict"] == ExperimentResult.Verdict.PASS
+        assert data["result"]["comment"] == "Test result"
+        assert "verdict" not in data["result"]
 
     def test_get_dispatch_not_found(self, client, auth_headers, lab_staff):
         """Returns 404 for unknown dispatch."""
@@ -921,23 +927,19 @@ class TestDispatchUnload:
 
 @pytest.mark.django_db
 class TestDispatchRecordResult:
-    def test_record_result_success(
+    def test_record_result_comment_only_payload(
         self, client, auth_headers, lab_staff, unloaded_dispatch
     ):
-        """Lab staff can record result for unloaded dispatch.
+        """The payload is just {comment} now — server randomises the
+        per-wafer verdict, so the client never sends one. Dispatch
+        transitions straight to COMPLETED and completed_at is stamped."""
+        import random
 
-        Recording a result is now the terminal step — the dispatch
-        transitions straight to COMPLETED and completed_at is stamped.
-        RESULT_RECORDED is bypassed entirely.
-        """
-        payload = {
-            "summary": "All tests passed",
-            "verdict": "pass",
-            "data": {"temperature": 150.0},
-        }
+        random.seed(0)
+
         resp = client.post(
             f"/api/dispatches/{unloaded_dispatch.pk}/record-result/",
-            data=payload,
+            data={"comment": "Run looked clean"},
             content_type="application/json",
             **auth_headers(lab_staff),
         )
@@ -945,16 +947,22 @@ class TestDispatchRecordResult:
         data = resp.json()
         assert data["status"] == DispatchStatus.COMPLETED
         assert data["completed_at"] is not None
-        assert data["result"]["verdict"] == "pass"
-        assert data["result"]["data_source"] == ExperimentResult.DataSource.MANUAL
+        assert data["result"]["comment"] == "Run looked clean"
+        # Old dispatch-level verdict / data / data_source are gone —
+        # verdict now lives per-wafer on SampleExperimentStatus.
+        assert "verdict" not in data["result"]
+        assert "data" not in data["result"]
+        assert "data_source" not in data["result"]
 
-    def test_record_result_invalid_verdict_fails(
+    def test_record_result_rejects_legacy_verdict_field(
         self, client, auth_headers, lab_staff, unloaded_dispatch
     ):
-        """Returns 422 for invalid verdict value."""
+        """Old client payloads with explicit verdict / data must fail
+        loudly (422) rather than silently drop — the SPA needs to
+        notice it's still sending stale fields."""
         resp = client.post(
             f"/api/dispatches/{unloaded_dispatch.pk}/record-result/",
-            data={"summary": "test", "verdict": "unknown"},
+            data={"comment": "ok", "verdict": "pass", "data": {"x": 1}},
             content_type="application/json",
             **auth_headers(lab_staff),
         )
@@ -966,11 +974,158 @@ class TestDispatchRecordResult:
         """Cannot record result for non-unloaded dispatch."""
         resp = client.post(
             f"/api/dispatches/{running_dispatch.pk}/record-result/",
-            data={"summary": "test", "verdict": "pass"},
+            data={"comment": "test"},
             content_type="application/json",
             **auth_headers(lab_staff),
         )
         assert resp.status_code == 400
+
+    def test_record_result_assigns_per_wafer_verdict_for_every_sample(
+        self,
+        client,
+        auth_headers,
+        lab_staff,
+        wip_in_progress,
+        experiment_type,
+        equipment,
+        recipe,
+        in_progress_request,
+    ):
+        """One dispatch over 3 samples → 3 SampleExperimentStatus rows
+        each carrying a verdict (pass or fail) after record_result."""
+        import random
+
+        from apps.wip.models import SampleExperimentStatus, SampleExperimentVerdict
+
+        random.seed(0)
+
+        # Add 2 more samples to the wip so it has 3 total.
+        extra1 = SampleFactory(
+            request=in_progress_request,
+            wafer_id="WF-EXTRA-1",
+            status=SampleStatus.PROCESSING,
+        )
+        extra2 = SampleFactory(
+            request=in_progress_request,
+            wafer_id="WF-EXTRA-2",
+            status=SampleStatus.PROCESSING,
+        )
+        for s in (extra1, extra2):
+            WIPSample.objects.create(wip=wip_in_progress, sample=s)
+            SampleExperimentStatus.objects.create(
+                sample=s, experiment_type=experiment_type
+            )
+
+        d = DispatchFactory(
+            wip=wip_in_progress,
+            experiment_type=experiment_type,
+            equipment=equipment,
+            recipe=recipe,
+            status=DispatchStatus.UNLOADED,
+        )
+
+        resp = client.post(
+            f"/api/dispatches/{d.pk}/record-result/",
+            data={"comment": "batch run"},
+            content_type="application/json",
+            **auth_headers(lab_staff),
+        )
+        assert resp.status_code == 200, resp.json()
+
+        sample_ids = list(wip_in_progress.samples.values_list("pk", flat=True))
+        assert len(sample_ids) == 3
+        rows = SampleExperimentStatus.objects.filter(
+            sample_id__in=sample_ids, experiment_type=experiment_type
+        )
+        assert rows.count() == 3
+        verdicts = {r.verdict for r in rows}
+        assert verdicts.issubset(
+            {SampleExperimentVerdict.PASS, SampleExperimentVerdict.FAIL}
+        )
+        # Every row got a verdict — none left null.
+        assert all(r.verdict is not None for r in rows)
+
+    def test_record_result_verdict_distribution_roughly_80_20(
+        self,
+        client,
+        auth_headers,
+        lab_staff,
+        experiment_type,
+        equipment,
+        recipe,
+    ):
+        """Drive 100 single-sample dispatches through record_result with
+        a pinned seed; expect ~20 fails, allow Wilson-ish slack so the
+        test isn't flaky."""
+        import random
+
+        from apps.commissions.factories import RequestFactory
+        from apps.commissions.models import RequestExperiment, RequestStatus
+        from apps.wip.models import (
+            SampleExperimentStatus,
+            SampleExperimentVerdict,
+        )
+
+        random.seed(42)
+
+        fail_count = 0
+        for i in range(100):
+            req = RequestFactory(status=RequestStatus.IN_PROGRESS)
+            RequestExperiment.objects.create(
+                request=req, experiment_type=experiment_type
+            )
+            s = SampleFactory(
+                request=req,
+                wafer_id=f"WF-DIST-{i:03d}",
+                status=SampleStatus.PROCESSING,
+            )
+            SampleExperimentStatus.objects.create(
+                sample=s, experiment_type=experiment_type
+            )
+            w = WIPFactory(
+                experiment_type=experiment_type,
+                status=WIPStatus.IN_PROGRESS,
+                created_by=lab_staff,
+            )
+            WIPSample.objects.create(wip=w, sample=s)
+            d = DispatchFactory(
+                wip=w,
+                experiment_type=experiment_type,
+                equipment=equipment,
+                recipe=recipe,
+                status=DispatchStatus.UNLOADED,
+            )
+            resp = client.post(
+                f"/api/dispatches/{d.pk}/record-result/",
+                data={"comment": "dist test"},
+                content_type="application/json",
+                **auth_headers(lab_staff),
+            )
+            assert resp.status_code == 200, resp.json()
+
+            row = SampleExperimentStatus.objects.get(
+                sample=s, experiment_type=experiment_type
+            )
+            if row.verdict == SampleExperimentVerdict.FAIL:
+                fail_count += 1
+
+        # 80/20 with n=100 → 95% CI is ~[12, 30]; widen a hair for
+        # the seeded run to stay robust if Python's RNG drifts.
+        assert 10 <= fail_count <= 35, f"got fail_count={fail_count}"
+
+    def test_sample_experiment_status_verdict_null_before_record(
+        self, sample, experiment_type
+    ):
+        """SampleExperimentStatus.verdict starts null until a dispatch's
+        record_result fills it in."""
+        from apps.wip.models import SampleExperimentStatus
+
+        # The `sample` fixture already created a SampleExperimentStatus
+        # for the experiment_type via `in_progress_request`.
+        row = SampleExperimentStatus.objects.get(
+            sample=sample, experiment_type=experiment_type
+        )
+        assert row.verdict is None
 
 
 @pytest.mark.django_db
@@ -1006,7 +1161,7 @@ class TestWIPAutoCompleteOnDispatchTerminate:
         # record-result → dispatch lands in COMPLETED → WIP auto-completes
         resp = client.post(
             f"/api/dispatches/{dispatch.pk}/record-result/",
-            data={"summary": "ok", "verdict": "pass"},
+            data={"comment": "ok"},
             content_type="application/json",
             **auth_headers(lab_staff),
         )
@@ -1056,7 +1211,7 @@ class TestWIPAutoCompleteOnDispatchTerminate:
         )
         resp = client.post(
             f"/api/dispatches/{new_dispatch_id}/record-result/",
-            data={"summary": "ok", "verdict": "pass"},
+            data={"comment": "ok"},
             content_type="application/json",
             **auth_headers(lab_staff),
         )
@@ -1155,7 +1310,7 @@ class TestWIPAutoCompleteOnDispatchTerminate:
         client.post(f"/api/dispatches/{new_id}/unload/", **auth_headers(lab_staff))
         resp = client.post(
             f"/api/dispatches/{new_id}/record-result/",
-            data={"summary": "ok", "verdict": "pass"},
+            data={"comment": "ok"},
             content_type="application/json",
             **auth_headers(lab_staff),
         )
@@ -1198,7 +1353,7 @@ class TestWIPAutoCompleteOnDispatchTerminate:
         client.post(f"/api/dispatches/{running.pk}/unload/", **auth_headers(lab_staff))
         resp = client.post(
             f"/api/dispatches/{running.pk}/record-result/",
-            data={"summary": "ok", "verdict": "pass"},
+            data={"comment": "ok"},
             content_type="application/json",
             **auth_headers(lab_staff),
         )
@@ -1372,17 +1527,17 @@ class TestDispatchAbort:
 # =============================================================================
 
 
+# Automation payload: {dispatch_id, comment} — same simplification
+# as record_result. Pass/fail rolled server-side per wafer.
 @pytest.mark.django_db
 class TestAutomationEquipmentResult:
     def test_automation_result_completes_dispatch(
         self, client, auth_headers, lab_staff, dispatched_dispatch
     ):
-        """Automation endpoint completes dispatch with automated data_source."""
+        """Automation endpoint completes dispatch and creates a result row."""
         payload = {
             "dispatch_id": dispatched_dispatch.pk,
-            "summary": "Automated measurement complete",
-            "verdict": "pass",
-            "data": {"measurement": 99.5},
+            "comment": "Automated measurement complete",
         }
         resp = client.post(
             "/api/automation/equipment-result/",
@@ -1395,19 +1550,13 @@ class TestAutomationEquipmentResult:
         assert data["status"] == DispatchStatus.COMPLETED
 
         result = ExperimentResult.objects.get(dispatch_id=dispatched_dispatch.pk)
-        assert result.data_source == ExperimentResult.DataSource.AUTOMATED
-        assert result.verdict == ExperimentResult.Verdict.PASS
+        assert result.comment == "Automated measurement complete"
 
     def test_automation_result_from_running_dispatch(
         self, client, auth_headers, lab_staff, running_dispatch
     ):
         """Automation endpoint works for running dispatch too."""
-        payload = {
-            "dispatch_id": running_dispatch.pk,
-            "summary": "Done",
-            "verdict": "fail",
-            "data": {},
-        }
+        payload = {"dispatch_id": running_dispatch.pk, "comment": "Done"}
         resp = client.post(
             "/api/automation/equipment-result/",
             data=payload,
@@ -1420,12 +1569,7 @@ class TestAutomationEquipmentResult:
         self, client, auth_headers, lab_staff, unloaded_dispatch
     ):
         """Automation endpoint rejects dispatches not in dispatched/running state."""
-        payload = {
-            "dispatch_id": unloaded_dispatch.pk,
-            "summary": "Test",
-            "verdict": "pass",
-            "data": {},
-        }
+        payload = {"dispatch_id": unloaded_dispatch.pk, "comment": "Test"}
         resp = client.post(
             "/api/automation/equipment-result/",
             data=payload,
@@ -1438,12 +1582,7 @@ class TestAutomationEquipmentResult:
         self, client, auth_headers, lab_staff
     ):
         """Returns 404 if dispatch not found."""
-        payload = {
-            "dispatch_id": 99999,
-            "summary": "Test",
-            "verdict": "pass",
-            "data": {},
-        }
+        payload = {"dispatch_id": 99999, "comment": "Test"}
         resp = client.post(
             "/api/automation/equipment-result/",
             data=payload,
@@ -1456,12 +1595,7 @@ class TestAutomationEquipmentResult:
         self, client, auth_headers, fab_user, dispatched_dispatch
     ):
         """Fab user cannot submit automation results."""
-        payload = {
-            "dispatch_id": dispatched_dispatch.pk,
-            "summary": "Test",
-            "verdict": "pass",
-            "data": {},
-        }
+        payload = {"dispatch_id": dispatched_dispatch.pk, "comment": "Test"}
         resp = client.post(
             "/api/automation/equipment-result/",
             data=payload,

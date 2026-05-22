@@ -91,37 +91,17 @@
     <div x-show="showResult" x-cloak class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
       <div class="bg-white rounded-xl shadow-2xl p-6 w-[480px]">
         <h3 class="font-semibold text-slate-800 mb-4">Record Experiment Result</h3>
+        <p class="text-xs text-slate-500 mb-3">
+          Per-wafer pass/fail verdicts are assigned by the system. Add
+          an optional comment about the run as a whole.
+        </p>
         <form method="post" action="{% url 'web:dispatch-record-result' dispatch.pk %}">
           {% csrf_token %}
-          <div class="mb-3">
-            <label class="block text-sm font-medium text-slate-700 mb-1">Summary <span class="text-red-500">*</span></label>
-            <textarea name="summary" rows="3" required
-                      class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Describe the experiment result..."></textarea>
-          </div>
-          <div class="mb-3">
-            <label class="block text-sm font-medium text-slate-700 mb-2">Verdict <span class="text-red-500">*</span></label>
-            <div class="flex gap-4">
-              <label class="flex items-center gap-2 cursor-pointer">
-                <input type="radio" name="verdict" value="pass" required class="text-green-500">
-                <span class="text-sm text-green-700 font-medium">Pass</span>
-              </label>
-              <label class="flex items-center gap-2 cursor-pointer">
-                <input type="radio" name="verdict" value="fail" required>
-                <span class="text-sm text-red-600 font-medium">Fail</span>
-              </label>
-            </div>
-          </div>
-          <div class="mb-3">
-            <label class="block text-sm font-medium text-slate-700 mb-1">Data (JSON, optional)</label>
-            <textarea name="data" rows="2"
-                      class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder='{"key": "value"}'>{}</textarea>
-          </div>
           <div class="mb-4">
-            <label class="block text-sm font-medium text-slate-700 mb-1">Note</label>
-            <input type="text" name="note"
-                   class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <label class="block text-sm font-medium text-slate-700 mb-1">Comment</label>
+            <textarea name="comment" rows="3"
+                      class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Anything notable about the run (optional)…"></textarea>
           </div>
           <div class="flex gap-2 justify-end">
             <button type="button" @click="showResult = false"
@@ -185,20 +165,14 @@
     <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
       <h2 class="font-semibold text-slate-500 text-xs uppercase tracking-wider mb-3">Experiment Result</h2>
       <div class="flex items-center gap-3 mb-3">
-        {% if dispatch.result.verdict == 'pass' %}
-        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">PASS</span>
-        {% else %}
-        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">FAIL</span>
-        {% endif %}
-        <span class="text-xs text-slate-400">{{ dispatch.result.data_source }} | {{ dispatch.result.created_at|date:"Y-m-d H:i" }}</span>
+        <span class="text-xs text-slate-400">Recorded {{ dispatch.result.created_at|date:"Y-m-d H:i" }}</span>
       </div>
-      <p class="text-sm text-slate-700 mb-2">{{ dispatch.result.summary }}</p>
-      {% if dispatch.result.data %}
-      <pre class="bg-slate-50 rounded-lg p-3 text-xs text-slate-600 overflow-auto">{{ dispatch.result.data }}</pre>
+      {% if dispatch.result.comment %}
+      <p class="text-sm text-slate-700 mb-2">{{ dispatch.result.comment }}</p>
       {% endif %}
-      {% if dispatch.result.note %}
-      <p class="text-sm text-slate-500 mt-2">{{ dispatch.result.note }}</p>
-      {% endif %}
+      <p class="text-xs text-slate-400 mt-2">
+        Per-wafer pass/fail verdicts are visible on each sample's detail page.
+      </p>
     </div>
     {% endif %}
   </div>

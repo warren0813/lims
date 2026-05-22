@@ -96,7 +96,7 @@ def _run_dispatch_to_complete(client, dispatch_id, lab_staff_user) -> dict:
         client,
         f"/api/dispatches/{dispatch_id}/record-result/",
         lab_staff_user,
-        {"summary": "E2E test result", "verdict": "pass"},
+        {"comment": "E2E test result"},
     )
     assert r.status_code == 200, r.json()
     return r.json()
@@ -578,16 +578,16 @@ class TestAutomationWorkflow:
         r = _post(client, f"/api/dispatches/{dispatch_id}/start/", lab_staff)
         assert r.status_code == 200
 
-        # Equipment submits result automatically
+        # Equipment submits result automatically — payload is just
+        # {dispatch_id, comment} now; per-wafer verdicts are rolled
+        # server-side on SampleExperimentStatus.
         r = _post(
             client,
             "/api/automation/equipment-result/",
             lab_staff,
             {
                 "dispatch_id": dispatch_id,
-                "summary": "Auto-measurement complete",
-                "verdict": "pass",
-                "data": {"thickness_nm": 120.5},
+                "comment": "Auto-measurement complete",
             },
         )
         assert r.status_code == 200, r.json()
@@ -595,13 +595,11 @@ class TestAutomationWorkflow:
 
         assert data["status"] == DispatchStatus.COMPLETED
         assert data["result"] is not None
-        assert data["result"]["data_source"] == ExperimentResult.DataSource.AUTOMATED
-        assert data["result"]["verdict"] == ExperimentResult.Verdict.PASS
-        assert data["result"]["data"] == {"thickness_nm": 120.5}
+        assert data["result"]["comment"] == "Auto-measurement complete"
 
         # Verify ExperimentResult is stored correctly
         result = ExperimentResult.objects.get(dispatch_id=dispatch_id)
-        assert result.data_source == ExperimentResult.DataSource.AUTOMATED
+        assert result.comment == "Auto-measurement complete"
 
         # WIP auto-completes when the only active dispatch finishes via
         # the automation endpoint — no manual /wips/{id}/complete/ POST.
@@ -642,10 +640,9 @@ class TestAutomationWorkflow:
             lab_staff,
             {
                 "dispatch_id": dispatch.pk,
-                "summary": "Auto result from dispatched state",
-                "verdict": "fail",
+                "comment": "Auto result from dispatched state",
             },
         )
         assert r.status_code == 200
         assert r.json()["status"] == DispatchStatus.COMPLETED
-        assert r.json()["result"]["verdict"] == ExperimentResult.Verdict.FAIL
+        assert r.json()["result"]["comment"] == "Auto result from dispatched state"

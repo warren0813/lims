@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from ninja import Field, Schema
 
@@ -44,13 +44,16 @@ class DispatchBriefOut(Schema):
 
 
 class ExperimentResultOut(Schema):
-    """Experiment result details nested in dispatch responses."""
+    """Experiment result details nested in dispatch responses.
+
+    Pass/fail verdict lives per-wafer on SampleExperimentStatus.verdict
+    (exposed via SampleExperimentStatusOut + the sample-experiments
+    rollup). This block only carries the dispatch-level operator
+    comment.
+    """
 
     id: int
-    summary: str
-    verdict: str
-    data: dict[str, Any]
-    data_source: str
+    comment: str
     created_at: datetime
 
 
@@ -94,13 +97,19 @@ class DispatchIn(Schema):
     estimated_duration_seconds: int | None = Field(None, gt=0)
 
 
-class ExperimentResultIn(Schema):
-    """Input schema for recording an experiment result."""
+class RecordResultIn(Schema):
+    """Input schema for recording a dispatch result.
 
-    summary: str = Field(..., min_length=1)
-    verdict: str = Field(..., pattern="^(pass|fail)$")
-    data: dict[str, Any] = {}
-    note: str = ""
+    Server randomises the per-wafer verdict (80% pass / 20% fail) — the
+    client never sends one. extra="forbid" so stale clients still
+    posting verdict/data/summary fail loudly (422) instead of silently
+    losing those fields' intent.
+    """
+
+    comment: str = ""
+
+    class Config:
+        extra = "forbid"
 
 
 class ExceptionReportIn(Schema):
@@ -110,12 +119,18 @@ class ExceptionReportIn(Schema):
 
 
 class AutomationResultIn(Schema):
-    """Input schema for automated equipment result submission."""
+    """Input schema for automated equipment result submission.
+
+    Same simplification as the manual record_result path — server
+    randomises per-wafer verdict; the equipment integration only needs
+    to identify the dispatch and optionally attach a comment string.
+    """
 
     dispatch_id: int
-    summary: str = Field(..., min_length=1)
-    verdict: str = Field(..., pattern="^(pass|fail)$")
-    data: dict[str, Any] = {}
+    comment: str = ""
+
+    class Config:
+        extra = "forbid"
 
 
 # --- WIP output schemas ---
@@ -269,10 +284,7 @@ class DispatchDetailOut(Schema):
             r = dispatch.result
             result = {
                 "id": r.pk,
-                "summary": r.summary,
-                "verdict": r.verdict,
-                "data": r.data,
-                "data_source": r.data_source,
+                "comment": r.comment,
                 "created_at": r.created_at,
             }
         return {

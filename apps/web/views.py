@@ -1337,29 +1337,23 @@ def dispatch_unload(request: HttpRequest, dispatch_id: int) -> HttpResponse:
 @role_required("lab_staff", "lab_manager")
 @require_POST
 def dispatch_record_result(request: HttpRequest, dispatch_id: int) -> HttpResponse:
-    summary = request.POST.get("summary", "").strip()
-    verdict = request.POST.get("verdict", "").strip()
-    data_raw = request.POST.get("data", "{}").strip()
-    note = request.POST.get("note", "").strip()
+    """Record-result via the legacy Django-templated UI.
 
-    if not summary:
-        return _action_error(
-            request, "Summary is required.", redirect_url=f"/dispatches/{dispatch_id}/"
-        )
-    if verdict not in ("pass", "fail"):
-        return _action_error(
-            request,
-            "Verdict must be pass or fail.",
-            redirect_url=f"/dispatches/{dispatch_id}/",
-        )
-    try:
-        data = json.loads(data_raw) if data_raw else {}
-    except json.JSONDecodeError:
-        data = {}
+    Comment-only payload (random per-wafer verdict happens server-side
+    via the shared cascade helper, matching the SPA API path).
+    """
+    comment = request.POST.get("comment", request.POST.get("note", "")).strip()
+
+    # Lazy import to avoid the apps.web → apps.wip.api dependency at
+    # module load.
+    from apps.wip.api import _update_experiment_statuses_on_dispatch_complete
 
     with transaction.atomic():
         dispatch = get_object_or_404(
-            Dispatch.objects.select_for_update(), pk=dispatch_id
+            Dispatch.objects.select_for_update().select_related(
+                "wip", "experiment_type"
+            ),
+            pk=dispatch_id,
         )
         try:
             target = validate_dispatch_transition(dispatch.status, "record_result")
@@ -1368,16 +1362,14 @@ def dispatch_record_result(request: HttpRequest, dispatch_id: int) -> HttpRespon
                 request, str(e), redirect_url=f"/dispatches/{dispatch_id}/"
             )
         dispatch.status = target
+        dispatch.completed_at = timezone.now()
         dispatch.save()
         ExperimentResult.objects.create(
             dispatch=dispatch,
-            summary=summary,
-            verdict=verdict,
-            data=data,
-            note=note,
-            data_source=ExperimentResult.DataSource.MANUAL,
+            comment=comment,
             recorded_by=request.user,
         )
+        _update_experiment_statuses_on_dispatch_complete(dispatch)
     return redirect("web:dispatch-detail", dispatch_id=dispatch_id)
 
 

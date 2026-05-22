@@ -25,7 +25,18 @@ class SampleExperimentProgress(models.TextChoices):
     PENDING = "pending", "待處理"
     IN_PROGRESS = "in_progress", "處理中"
     COMPLETED = "completed", "已完成"
+    # FAILED is kept in the enum for migration / historical compatibility
+    # but new code does not assign it. Pass/fail outcome lives on
+    # SampleExperimentStatus.verdict; procedural state is just pending →
+    # in_progress → completed regardless of verdict.
     FAILED = "failed", "不合格"
+
+
+class SampleExperimentVerdict(models.TextChoices):
+    """Per-(sample, experiment_type) outcome assigned at record_result."""
+
+    PASS = "pass", "合格"
+    FAIL = "fail", "不合格"
 
 
 class WIP(models.Model):
@@ -136,28 +147,17 @@ class Dispatch(models.Model):
 
 
 class ExperimentResult(models.Model):
-    """Recorded outcome of a completed dispatch."""
+    """Recorded outcome of a completed dispatch.
 
-    class DataSource(models.TextChoices):
-        MANUAL = "manual", "手動登錄"
-        AUTOMATED = "automated", "自動化"
-
-    class Verdict(models.TextChoices):
-        PASS = "pass", "合格"
-        FAIL = "fail", "不合格"
+    Pass/fail outcome lives per-wafer on SampleExperimentStatus.verdict
+    (randomised by the server at record_result time); this row only
+    carries a free-form operator comment about the run as a whole.
+    """
 
     dispatch = models.OneToOneField(
         Dispatch, on_delete=models.CASCADE, related_name="result"
     )
-    summary = models.TextField()
-    verdict = models.CharField(max_length=10, choices=Verdict.choices)
-    data = models.JSONField(default=dict, blank=True)
-    data_source = models.CharField(
-        max_length=20,
-        choices=DataSource.choices,
-        default=DataSource.MANUAL,
-    )
-    note = models.TextField(blank=True)
+    comment = models.TextField(blank=True)
     recorded_by = models.ForeignKey(
         User,
         on_delete=models.PROTECT,
@@ -171,7 +171,7 @@ class ExperimentResult(models.Model):
         db_table = "experiment_result"
 
     def __str__(self) -> str:
-        return f"Result for Dispatch #{self.dispatch_id}: {self.verdict}"
+        return f"Result for Dispatch #{self.dispatch_id}"
 
 
 class SampleExperimentStatus(models.Model):
@@ -191,6 +191,13 @@ class SampleExperimentStatus(models.Model):
         max_length=20,
         choices=SampleExperimentProgress.choices,
         default=SampleExperimentProgress.PENDING,
+    )
+    verdict = models.CharField(
+        max_length=8,
+        choices=SampleExperimentVerdict.choices,
+        null=True,
+        blank=True,
+        help_text="Per-wafer pass/fail outcome — null until record_result fills it.",
     )
     dispatch = models.ForeignKey(
         "wip.Dispatch",

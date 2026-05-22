@@ -283,11 +283,16 @@ class SampleDetailOut(Schema):
 
 
 class SampleExperimentStatusOut(Schema):
-    """Output schema for per-sample experiment progress."""
+    """Output schema for per-sample experiment progress.
+
+    verdict is null until the dispatch's record_result fills it in
+    (random pass/fail per wafer).
+    """
 
     experiment_type_id: int
     experiment_type_name: str
     status: str
+    verdict: str | None
     dispatch_id: int | None
 
 
@@ -295,10 +300,7 @@ class ExperimentResultBrief(Schema):
     """Result summary nested in the sample experiments rollup."""
 
     id: int
-    summary: str
-    verdict: str
-    data: dict[str, Any]
-    data_source: str
+    comment: str
     created_at: datetime
 
 
@@ -320,6 +322,7 @@ class SampleExperimentRollupOut(Schema):
 
     experiment_type: ExperimentTypeBrief
     status: str
+    verdict: str | None
     dispatch_id: int | None
     result: ExperimentResultBrief | None
 

@@ -957,9 +957,18 @@ class TestSampleExperimentsRollup:
         }
 
     def test_pending_in_progress_done(self, client, auth_headers, lab_staff):
-        """One sample exercises all three states in a single response."""
+        """One sample exercises all three states in a single response.
+
+        Verdict now lives top-level per-(sample, experiment_type) on the
+        rollup row (was nested in result.verdict before — the result
+        block now only carries the operator comment).
+        """
         from apps.wip.factories import DispatchFactory, ExperimentResultFactory
-        from apps.wip.models import DispatchStatus, ExperimentResult
+        from apps.wip.models import (
+            DispatchStatus,
+            SampleExperimentStatus,
+            SampleExperimentVerdict,
+        )
 
         ctx = self._setup_sample_with_experiments()
         sample = ctx["sample"]
@@ -972,7 +981,7 @@ class TestSampleExperimentsRollup:
             recipe=ctx["recipes"]["in_progress"],
             status=DispatchStatus.RUNNING,
         )
-        # done: dispatch COMPLETED with a result
+        # done: dispatch COMPLETED with a result + per-wafer verdict.
         done_dispatch = DispatchFactory(
             wip=ctx["wip_done"],
             experiment_type=ctx["et_done"],
@@ -980,10 +989,12 @@ class TestSampleExperimentsRollup:
             recipe=ctx["recipes"]["done"],
             status=DispatchStatus.COMPLETED,
         )
-        ExperimentResultFactory(
+        ExperimentResultFactory(dispatch=done_dispatch, comment="OK")
+        SampleExperimentStatus.objects.create(
+            sample=sample,
+            experiment_type=ctx["et_done"],
+            verdict=SampleExperimentVerdict.PASS,
             dispatch=done_dispatch,
-            verdict=ExperimentResult.Verdict.PASS,
-            summary="OK",
         )
 
         resp = client.get(
@@ -993,17 +1004,19 @@ class TestSampleExperimentsRollup:
         rows = {row["experiment_type"]["name"]: row for row in resp.json()}
 
         assert rows["ET-PENDING"]["status"] == "pending"
+        assert rows["ET-PENDING"]["verdict"] is None
         assert rows["ET-PENDING"]["dispatch_id"] is None
         assert rows["ET-PENDING"]["result"] is None
 
         assert rows["ET-IN-PROGRESS"]["status"] == "in_progress"
+        assert rows["ET-IN-PROGRESS"]["verdict"] is None
         assert rows["ET-IN-PROGRESS"]["dispatch_id"] is not None
         assert rows["ET-IN-PROGRESS"]["result"] is None
 
         assert rows["ET-DONE"]["status"] == "done"
+        assert rows["ET-DONE"]["verdict"] == "pass"
         assert rows["ET-DONE"]["dispatch_id"] == done_dispatch.pk
-        assert rows["ET-DONE"]["result"]["verdict"] == "pass"
-        assert rows["ET-DONE"]["result"]["summary"] == "OK"
+        assert rows["ET-DONE"]["result"]["comment"] == "OK"
 
     def test_not_found(self, client, auth_headers, lab_staff):
         resp = client.get(self.URL_TEMPLATE.format(99999), **auth_headers(lab_staff))

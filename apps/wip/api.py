@@ -1,5 +1,7 @@
 """Django Ninja routers for WIP, Dispatch, and Automation endpoints."""
 
+import random
+
 from django.db import models, transaction
 from django.db.models import Prefetch
 from django.http import HttpRequest
@@ -28,6 +30,7 @@ from apps.wip.models import (
     ExperimentResult,
     SampleExperimentProgress,
     SampleExperimentStatus,
+    SampleExperimentVerdict,
     WIPSample,
     WIPStatus,
 )
@@ -37,7 +40,7 @@ from apps.wip.schemas import (
     DispatchIn,
     DispatchListOut,
     ExceptionReportIn,
-    ExperimentResultIn,
+    RecordResultIn,
     WIPAddSamplesIn,
     WIPDetailOut,
     WIPIn,
@@ -98,6 +101,17 @@ TERMINAL_DISPATCH_STATUSES = frozenset(
         DispatchStatus.PENDING_REDISPATCH,
     }
 )
+
+
+# Per-wafer pass/fail randomisation weights for record_result.
+# Tunable in one place; tests pin via random.seed.
+_VERDICT_CHOICES = (SampleExperimentVerdict.PASS, SampleExperimentVerdict.FAIL)
+_VERDICT_WEIGHTS = (0.8, 0.2)
+
+
+def _random_verdict() -> str:
+    """Roll a per-wafer verdict — 80% pass / 20% fail."""
+    return random.choices(_VERDICT_CHOICES, weights=_VERDICT_WEIGHTS, k=1)[0]
 
 
 def _check_all_dispatches_done(wip: WIP) -> bool:
@@ -258,24 +272,27 @@ def _transition_samples_to_processing(samples: list[Sample]) -> None:
 
 
 def _update_experiment_statuses_on_dispatch_complete(dispatch: Dispatch) -> None:
-    """When a dispatch completes, update SampleExperimentStatus for all
-    samples in the WIP, then check for sample/request auto-completion.
+    """When a dispatch completes, set status=COMPLETED and roll a
+    per-wafer verdict (80/20 pass/fail) on every SampleExperimentStatus
+    row attached to this dispatch's WIP × experiment_type, then check
+    for sample/request auto-completion.
 
     Must be called inside an active transaction.atomic() block.
     """
     wip = dispatch.wip
     experiment_type = dispatch.experiment_type
-    result = getattr(dispatch, "result", None)
-    verdict_status = SampleExperimentProgress.COMPLETED
-    if result and result.verdict == ExperimentResult.Verdict.FAIL:
-        verdict_status = SampleExperimentProgress.FAILED
-
     sample_ids = list(wip.samples.values_list("pk", flat=True))
 
-    SampleExperimentStatus.objects.filter(
-        sample_id__in=sample_ids,
-        experiment_type=experiment_type,
-    ).update(status=verdict_status, dispatch=dispatch)
+    # Per-wafer roll: each row gets its own dice. We can't .update() in
+    # bulk because each row needs an independent random value.
+    rows = SampleExperimentStatus.objects.select_for_update().filter(
+        sample_id__in=sample_ids, experiment_type=experiment_type
+    )
+    for row in rows:
+        row.status = SampleExperimentProgress.COMPLETED
+        row.verdict = _random_verdict()
+        row.dispatch = dispatch
+        row.save(update_fields=["status", "verdict", "dispatch", "updated_at"])
 
     # Check auto-completion for each sample.
     for sample in Sample.objects.select_for_update().filter(pk__in=sample_ids):
@@ -795,9 +812,12 @@ def unload_dispatch(request: HttpRequest, dispatch_id: int):
     "/{dispatch_id}/record-result/",
     response={200: DispatchDetailOut, 400: ErrorOut, 403: ErrorOut, 404: ErrorOut},
 )
-def record_result(request: HttpRequest, dispatch_id: int, payload: ExperimentResultIn):
+def record_result(request: HttpRequest, dispatch_id: int, payload: RecordResultIn):
     """Record result for an unloaded dispatch — terminal step.
 
+    Payload is just {comment} now — the per-wafer pass/fail verdict
+    is rolled server-side (80% pass / 20% fail per wafer) and stored
+    on each SampleExperimentStatus row, not on the dispatch result.
     Lands the dispatch in COMPLETED directly (no intermediate
     RESULT_RECORDED step), stamps completed_at, and cascades the
     per-sample experiment-status update. Lab staff only.
@@ -822,16 +842,11 @@ def record_result(request: HttpRequest, dispatch_id: int, payload: ExperimentRes
 
         dispatch.status = target
         dispatch.completed_at = timezone.now()
-        if payload.note:
-            dispatch.note = f"{dispatch.note}\n{payload.note}".strip()
         dispatch.save()
 
         ExperimentResult.objects.create(
             dispatch=dispatch,
-            summary=payload.summary,
-            verdict=payload.verdict,
-            data=payload.data,
-            data_source=ExperimentResult.DataSource.MANUAL,
+            comment=payload.comment,
             recorded_by=request.auth,
         )
 
@@ -1006,10 +1021,7 @@ def submit_equipment_result(request: HttpRequest, payload: AutomationResultIn):
 
         ExperimentResult.objects.create(
             dispatch=dispatch,
-            summary=payload.summary,
-            verdict=payload.verdict,
-            data=payload.data,
-            data_source=ExperimentResult.DataSource.AUTOMATED,
+            comment=payload.comment,
         )
 
         # Update experiment statuses for all samples in the WIP.

@@ -708,6 +708,14 @@ def sample_experiments(request: HttpRequest, sample_id: int):
         for d in dispatch_qs:
             dispatches_by_et.setdefault(d.experiment_type_id, []).append(d)
 
+    # Per-wafer verdicts now live on SampleExperimentStatus, not on
+    # the dispatch result. One query for all of this sample's rows.
+    verdicts_by_et: dict[int, str | None] = dict(
+        SampleExperimentStatus.objects.filter(sample=sample).values_list(
+            "experiment_type_id", "verdict"
+        )
+    )
+
     rows = []
     for re in request_experiments:
         et = re.experiment_type
@@ -729,10 +737,7 @@ def sample_experiments(request: HttpRequest, sample_id: int):
                 r = completed.result
                 result_payload = {
                     "id": r.pk,
-                    "summary": r.summary,
-                    "verdict": r.verdict,
-                    "data": r.data,
-                    "data_source": r.data_source,
+                    "comment": r.comment,
                     "created_at": r.created_at,
                 }
             else:
@@ -753,6 +758,7 @@ def sample_experiments(request: HttpRequest, sample_id: int):
             {
                 "experiment_type": {"id": et.pk, "name": et.name},
                 "status": status,
+                "verdict": verdicts_by_et.get(et.pk),
                 "dispatch_id": dispatch_id,
                 "result": result_payload,
             }
@@ -872,6 +878,7 @@ def get_sample_experiment_status(request: HttpRequest, sample_id: int):
             "experiment_type_id": s.experiment_type_id,
             "experiment_type_name": s.experiment_type.name,
             "status": s.status,
+            "verdict": s.verdict,
             "dispatch_id": s.dispatch_id,
         }
         for s in statuses

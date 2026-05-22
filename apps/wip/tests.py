@@ -290,13 +290,11 @@ class TestExperimentResult:
         )
         result = ExperimentResult.objects.create(
             dispatch=dispatch,
-            summary="測試完成，所有樣品通過",
-            verdict=ExperimentResult.Verdict.PASS,
+            comment="測試完成，所有樣品通過",
         )
 
         assert result.dispatch == dispatch
-        assert result.verdict == ExperimentResult.Verdict.PASS
-        assert result.data_source == ExperimentResult.DataSource.MANUAL
+        assert result.comment == "測試完成，所有樣品通過"
 
     def test_experiment_result_one_to_one(
         self, lab_user, sample, experiment_type, equipment, recipe
@@ -313,23 +311,16 @@ class TestExperimentResult:
             recipe=recipe,
             created_by=lab_user,
         )
-        ExperimentResult.objects.create(
-            dispatch=dispatch,
-            summary="第一次結果",
-            verdict=ExperimentResult.Verdict.PASS,
-        )
+        ExperimentResult.objects.create(dispatch=dispatch, comment="第一次結果")
 
         with pytest.raises(IntegrityError):
-            ExperimentResult.objects.create(
-                dispatch=dispatch,
-                summary="重複結果",
-                verdict=ExperimentResult.Verdict.FAIL,
-            )
+            ExperimentResult.objects.create(dispatch=dispatch, comment="重複結果")
 
-    def test_experiment_result_json_data(
+    def test_experiment_result_comment_round_trip(
         self, lab_user, sample, experiment_type, equipment, recipe
     ):
-        """data JSONField can be written and read back correctly."""
+        """comment TextField can be written and read back correctly —
+        replaces the old test_experiment_result_json_data (data field gone)."""
         from apps.wip.models import WIP, Dispatch, ExperimentResult, WIPSample
 
         wip = WIP.objects.create(experiment_type=experiment_type, created_by=lab_user)
@@ -341,17 +332,11 @@ class TestExperimentResult:
             recipe=recipe,
             created_by=lab_user,
         )
-        data = {"temperature_actual": 150.2, "defect_count": 0}
-        result = ExperimentResult.objects.create(
-            dispatch=dispatch,
-            summary="帶數據的結果",
-            verdict=ExperimentResult.Verdict.PASS,
-            data=data,
-        )
+        comment = "Run completed cleanly. Wafer 2 had minor visual artefacts."
+        result = ExperimentResult.objects.create(dispatch=dispatch, comment=comment)
 
         fresh = ExperimentResult.objects.get(pk=result.pk)
-        assert fresh.data["temperature_actual"] == 150.2
-        assert fresh.data["defect_count"] == 0
+        assert fresh.comment == comment
 
     def test_experiment_result_db_table_name(self):
         """Database table name is experiment_result."""

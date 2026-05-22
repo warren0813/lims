@@ -36,8 +36,8 @@ class DispatchInline(TabularInline):
 class ExperimentResultInline(TabularInline):
     model = ExperimentResult
     extra = 0
-    fields = ("summary", "verdict", "data_source", "recorded_by", "created_at")
-    readonly_fields = ("summary", "verdict", "data_source", "recorded_by", "created_at")
+    fields = ("comment", "recorded_by", "created_at")
+    readonly_fields = ("comment", "recorded_by", "created_at")
 
     def has_add_permission(self, request, obj=None):
         return False
@@ -102,22 +102,16 @@ class ExperimentResultAdmin(ModelAdmin):
     list_display = (
         "id",
         "dispatch",
-        "verdict",
-        "data_source",
         "recorded_by",
         "created_at",
     )
-    list_filter = ("verdict", "data_source")
     search_fields = (
-        "summary",
+        "comment",
         "recorded_by__username",
     )
     readonly_fields = (
         "dispatch",
-        "summary",
-        "verdict",
-        "data",
-        "data_source",
+        "comment",
         "recorded_by",
         "created_at",
     )
@@ -138,10 +132,11 @@ class SampleExperimentStatusAdmin(ModelAdmin):
         "sample",
         "experiment_type",
         "status",
+        "verdict",
         "dispatch",
         "updated_at",
     )
-    list_filter = ("status",)
+    list_filter = ("status", "verdict")
     search_fields = ("sample__wafer_id", "experiment_type__name")
     list_select_related = ("sample", "experiment_type", "dispatch")
     list_per_page = 25

@@ -70,10 +70,7 @@ class ExperimentResultFactory(DjangoModelFactory):
         model = ExperimentResult
 
     dispatch = factory.SubFactory(DispatchFactory)
-    summary = factory.Sequence(lambda n: f"Test result {n}")
-    verdict = ExperimentResult.Verdict.PASS
-    data = factory.LazyFunction(dict)
-    data_source = ExperimentResult.DataSource.MANUAL
+    comment = factory.Sequence(lambda n: f"Test result {n}")
 
 
 class SampleExperimentStatusFactory(DjangoModelFactory):
