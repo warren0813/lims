@@ -621,6 +621,26 @@ def close_request(request: HttpRequest, request_id: int):
     return 200, RequestDetailOut.from_request(req)
 
 
+@router.delete(
+    "/{request_id}",
+    response={204: None, 400: ErrorOut, 403: ErrorOut, 404: ErrorOut},
+)
+def delete_draft(request: HttpRequest, request_id: int):
+    """Hard-delete a draft request. Only the owning fab user may do this."""
+    if not _is_fab_user(request):
+        return 403, {"detail": "Only fab users can delete draft requests"}
+
+    req = _get_request_for_user(request_id, request.auth, Role.FAB_USER)
+    if req is None:
+        return 404, {"detail": "Not found"}
+
+    if req.status != RequestStatus.DRAFT:
+        return 400, {"detail": "Only draft requests can be deleted"}
+
+    req.delete()
+    return 204, None
+
+
 # =============================================================================
 # Sample endpoints
 # =============================================================================

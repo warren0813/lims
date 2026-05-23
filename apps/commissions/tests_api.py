@@ -825,6 +825,81 @@ class TestRequestClose:
         assert resp.status_code == 400
 
 
+@pytest.mark.django_db
+class TestRequestDeleteDraft:
+    def test_delete_draft_returns_204(self, client, auth_headers, fab_user):
+        """Fab user can delete their own draft request — returns 204 No Content."""
+        req = RequestFactory(requester=fab_user, status=RequestStatus.DRAFT)
+        resp = client.delete(
+            f"/api/requests/{req.pk}",
+            content_type="application/json",
+            **auth_headers(fab_user),
+        )
+        assert resp.status_code == 204
+
+    def test_delete_draft_removes_record(self, client, auth_headers, fab_user):
+        """Deleting a draft hard-deletes the DB record."""
+        req = RequestFactory(requester=fab_user, status=RequestStatus.DRAFT)
+        pk = req.pk
+        client.delete(
+            f"/api/requests/{pk}",
+            content_type="application/json",
+            **auth_headers(fab_user),
+        )
+        assert not Request.objects.filter(pk=pk).exists()
+
+    def test_delete_non_draft_rejected(self, client, auth_headers, fab_user):
+        """Cannot delete a request that is not in draft status."""
+        req = RequestFactory(requester=fab_user, status=RequestStatus.PENDING_APPROVAL)
+        resp = client.delete(
+            f"/api/requests/{req.pk}",
+            content_type="application/json",
+            **auth_headers(fab_user),
+        )
+        assert resp.status_code == 400
+        assert Request.objects.filter(pk=req.pk).exists()
+
+    def test_delete_other_users_draft_not_found(self, client, auth_headers, fab_user):
+        """Fab user cannot delete another user's draft — returns 404."""
+        other_req = RequestFactory(status=RequestStatus.DRAFT)
+        resp = client.delete(
+            f"/api/requests/{other_req.pk}",
+            content_type="application/json",
+            **auth_headers(fab_user),
+        )
+        assert resp.status_code == 404
+        assert Request.objects.filter(pk=other_req.pk).exists()
+
+    def test_delete_as_lab_manager_forbidden(self, client, auth_headers, lab_manager):
+        """Lab manager cannot delete draft requests."""
+        req = RequestFactory(status=RequestStatus.DRAFT)
+        resp = client.delete(
+            f"/api/requests/{req.pk}",
+            content_type="application/json",
+            **auth_headers(lab_manager),
+        )
+        assert resp.status_code == 403
+
+    def test_delete_as_lab_staff_forbidden(self, client, auth_headers, lab_staff):
+        """Lab staff cannot delete draft requests."""
+        req = RequestFactory(status=RequestStatus.DRAFT)
+        resp = client.delete(
+            f"/api/requests/{req.pk}",
+            content_type="application/json",
+            **auth_headers(lab_staff),
+        )
+        assert resp.status_code == 403
+
+    def test_delete_nonexistent_not_found(self, client, auth_headers, fab_user):
+        """Deleting a non-existent request returns 404."""
+        resp = client.delete(
+            "/api/requests/9999",
+            content_type="application/json",
+            **auth_headers(fab_user),
+        )
+        assert resp.status_code == 404
+
+
 # =============================================================================
 # Sample API Tests
 # =============================================================================
