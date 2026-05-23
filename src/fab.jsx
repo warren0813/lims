@@ -219,21 +219,50 @@ const SamplePill = ({ status, size = 'sm' }) => {
   return <Pill {...m} size={size}/>;
 };
 
-// ── Workflow dots: 4-stage pipeline based on wafer completeness ───
-// Stages: submitted → received (≥1 sample received) → in_progress → completed.
-// Returned / rejected / cancelled = aborted track (red).
-const WORKFLOW_STEPS = ['submitted', 'received', 'in_progress', 'completed'];
+// ── Workflow dots: 4-stage pipeline based on wafer state ──────────
+// Stages: Approved → Shipped → In Progress → Done. Returned /
+// rejected / cancelled fall onto the aborted track (red). Submitted
+// requests still awaiting approval render with every dot grey.
+const WORKFLOW_STEPS = ['approved', 'shipped', 'in_progress', 'done'];
+const WORKFLOW_LABELS = ['Approved', 'Shipped', 'In Progress', 'Done'];
 const stepFromRequest = (r) => {
-  if (r.status === 'draft' || r.status === 'cancelled' || r.status === 'rejected' || r.status === 'returned') {
+  if (r.status === 'draft' || r.status === 'cancelled' ||
+      r.status === 'rejected' || r.status === 'returned') {
     return { aborted: true, status: r.status };
   }
-  if (r.status === 'completed') return { idx: 3 };
-  // in_progress: gauge by sample receipt
-  const total = r.samples.length || 1;
-  const received = r.samples.filter(s => s.status === 'received').length;
-  if (received === 0) return { idx: 0 };           // submitted
-  if (received < total) return { idx: 1 };          // some received
-  return { idx: 2 };                                // all received → in progress
+  // Pre-approval: no dot is lit. FlowDots renders all-grey when the
+  // `current` value isn't in `steps`.
+  const raw = r.rawStatus || r.status;
+  if (raw === 'submitted' || raw === 'pending_approval') {
+    return { idx: -1 };
+  }
+  if (r.status === 'completed' || raw === 'completed' || raw === 'closed') return { idx: 3 };
+
+  const samples = r.samples || [];
+  // Detail view — samples are populated, so we can do per-wafer fine
+  // splitting (Shipped if any received-not-yet-processing, In Progress
+  // once anything's processing).
+  if (samples.length > 0) {
+    const allDone = samples.every(s => s.status === 'completed');
+    if (allDone) return { idx: 3 };
+    const anyProcessing = samples.some(s =>
+      s.status === 'processing' || s.status === 'in_wip' || s.status === 'completed'
+    );
+    if (anyProcessing) return { idx: 2 };
+    const anyShipped = samples.some(s =>
+      s.raw_status === 'shipped' || s.status === 'received' || s.raw_status === 'received'
+    );
+    if (anyShipped) return { idx: 1 };
+    return { idx: 0 };
+  }
+  // List view fallback — RequestListOut doesn't include samples, so we
+  // drive the dot off the raw backend status. FE REQUEST_STATUS_MAP
+  // collapses approved + sample_shipped + in_progress + exception to
+  // the same FE value, but rawStatus is preserved so we can split.
+  if (raw === 'approved') return { idx: 0 };
+  if (raw === 'sample_shipped') return { idx: 1 };
+  if (raw === 'in_progress' || raw === 'exception') return { idx: 2 };
+  return { idx: 0 };
 };
 const RequestFlow = ({ request, label = false }) => {
   const s = stepFromRequest(request);
@@ -260,19 +289,20 @@ const RequestFlow = ({ request, label = false }) => {
     );
   }
   const idx = s.idx;
-  const total = request.samples.length;
-  const received = request.samples.filter(x => x.status === 'received').length;
-  const labels = ['Submitted', `Received ${received}/${total}`, 'In progress', 'Completed'];
+  // Pre-approval renders every dot grey by passing a `current` value
+  // that isn't in WORKFLOW_STEPS (FlowDots short-circuits to indexOf=-1).
+  const current = idx >= 0 ? WORKFLOW_STEPS[idx] : null;
+  const labelText = idx >= 0 ? WORKFLOW_LABELS[idx] : 'Awaiting approval';
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
       <FUI.FlowDots
         steps={WORKFLOW_STEPS}
-        current={WORKFLOW_STEPS[idx]}
+        current={current}
         size={6} gap={4}
         doneColor="#6c67b8"
         currentColor="#6c67b8"
       />
-      {label && <span style={{ fontSize: 11.5, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{labels[idx]}</span>}
+      {label && <span style={{ fontSize: 11.5, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{labelText}</span>}
     </span>
   );
 };
@@ -493,9 +523,26 @@ const StatusBars = ({ requests }) => {
 // Phases: Approved → Shipped → Processing → Done.
 const WAFER_PHASES = ['Approved', 'Shipped', 'Received', 'Processing', 'Done'];
 const phaseIndexFor = (sample, request) => {
+  // Pre-approval states: nothing in the pipeline is true yet. Returning
+  // -1 tells PhasePipeline to leave every dot/connector grey. The adapter
+  // collapses backend `pending_approval` → FE `submitted`, so check both
+  // the rawStatus and the FE status to stay safe across call sites.
+  const rawReq = request.rawStatus || request.status;
+  if (rawReq === 'draft' || rawReq === 'submitted' || rawReq === 'pending_approval') return -1;
   if (request.status === 'completed' || sample.status === 'completed') return 4;
-  if (sample.status === 'received') return 2; // arrived at lab, not yet processed
-  if (sample.status === 'pending')  return 1; // approved + en route to lab
+  // Processing: sample is in a non-terminal WIP, or backend split/
+  // processing_exception, or backend's explicit `processing` state (set
+  // once the sample enters a dispatch).
+  if (sample.status === 'in_wip'
+      || sample.status === 'processing'
+      || sample.raw_status === 'processing'
+      || sample.raw_status === 'processing_exception'
+      || sample.raw_status === 'split') return 3;
+  // Received: physically at the lab, not yet pulled into a WIP.
+  if (sample.status === 'received' || sample.raw_status === 'received') return 2;
+  // Shipped: backend marked the sample as shipped (request transitioned via /ship).
+  if (sample.raw_status === 'shipped') return 1;
+  // Otherwise we're approved-but-not-yet-shipped (sample still `created`/`incoming`).
   return 0;
 };
 
@@ -541,13 +588,33 @@ const PhasePipeline = ({ idx, compact = false }) => {
   );
 };
 
-const InProgressRow = ({ request, navigate, defaultExpanded = false }) => {
-  const [open, setOpen] = uS(defaultExpanded);
-  const wafers = request.samples;
-  const overallIdx = Math.min(...wafers.map(s => phaseIndexFor(s, request)));
+const InProgressRow = ({ request, navigate, open, onToggle }) => {
+  // List endpoint doesn't carry the samples array — `request.sampleCount`
+  // is the only count we have until we load the detail. The detail fetch
+  // is lazy: only when the row is first opened, and cached in local state
+  // so collapsing + re-opening doesn't re-hit the API.
+  const sampleCount = request.sampleCount ?? request.samples?.length ?? 0;
+  const [detail, setDetail] = uS(null);
+  const [detailLoading, setDetailLoading] = uS(false);
+  const [detailError, setDetailError] = uS(null);
+  React.useEffect(() => {
+    if (!open || detail || detailLoading || !window.api?.requests) return;
+    setDetailLoading(true);
+    setDetailError(null);
+    window.api.requests.get(request.id)
+      .then(d => setDetail(d))
+      .catch(e => setDetailError(e.message || String(e)))
+      .finally(() => setDetailLoading(false));
+  }, [open, detail, detailLoading, request.id]);
+
+  const wafers = detail?.samples || [];
+  const overallIdx = wafers.length
+    ? Math.min(...wafers.map(s => phaseIndexFor(s, detail || request)))
+    : null;
+
   return (
     <div style={{ borderTop: '1px solid #f5f5f9' }}>
-      <button onClick={() => setOpen(o => !o)} style={{
+      <button onClick={onToggle} style={{
         width: '100%', textAlign: 'left',
         display: 'grid', gridTemplateColumns: '80px 1fr 130px 130px 24px',
         padding: '14px 24px', alignItems: 'center', gap: 16,
@@ -561,10 +628,12 @@ const InProgressRow = ({ request, navigate, defaultExpanded = false }) => {
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: '#6c67b8' }}>{request.title}</div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-            Currently: <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{WAFER_PHASES[overallIdx]}</span>
+            Currently: <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
+              {overallIdx == null ? '—' : (overallIdx >= 0 ? WAFER_PHASES[overallIdx] : '—')}
+            </span>
           </div>
         </div>
-        <span style={{ fontSize: 13.5, color: 'var(--text-secondary)' }}>{wafers.length} wafer{wafers.length === 1 ? '' : 's'}</span>
+        <span style={{ fontSize: 13.5, color: 'var(--text-secondary)' }}>{sampleCount} wafer{sampleCount === 1 ? '' : 's'}</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--text-muted)' }}>{request.submitted ? request.submitted.split(' ')[0] : '—'}</span>
         <F.ChevronDown size={15} color="#a8a8b8" style={{
           transform: open ? 'rotate(180deg)' : 'rotate(0)',
@@ -578,26 +647,45 @@ const InProgressRow = ({ request, navigate, defaultExpanded = false }) => {
             textTransform: 'uppercase', letterSpacing: '0.08em',
             padding: '14px 0 12px',
           }}>Wafer Phases</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {wafers.map((w, i) => {
-              const idx = phaseIndexFor(w, request);
-              return (
-                <div key={i} style={{
-                  display: 'grid', gridTemplateColumns: '160px 1fr',
-                  alignItems: 'center', gap: 18,
-                  padding: '12px 16px',
-                  background: '#fff', borderRadius: 10,
-                  border: '1px solid rgba(0,0,0,0.06)',
-                }}>
-                  <div>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{w.wafer}</div>
-                    <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>{w.size}</div>
+          {detailLoading && (
+            <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+              Loading wafer phases…
+            </div>
+          )}
+          {detailError && (
+            <div style={{
+              padding: '10px 12px', borderRadius: 8,
+              background: '#fde4e4', color: '#c0394a', fontSize: 13, fontWeight: 500,
+              border: '1px solid #f6c4c4',
+            }}>{detailError}</div>
+          )}
+          {!detailLoading && !detailError && wafers.length === 0 && (
+            <div style={{ padding: '12px 0', color: 'var(--text-muted)', fontSize: 13, fontStyle: 'italic' }}>
+              No wafers on this request.
+            </div>
+          )}
+          {wafers.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {wafers.map((w, i) => {
+                const idx = phaseIndexFor(w, detail || request);
+                return (
+                  <div key={w.id ?? i} style={{
+                    display: 'grid', gridTemplateColumns: '160px 1fr',
+                    alignItems: 'center', gap: 18,
+                    padding: '12px 16px',
+                    background: '#fff', borderRadius: 10,
+                    border: '1px solid rgba(0,0,0,0.06)',
+                  }}>
+                    <div>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{w.wafer}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>{w.size}</div>
+                    </div>
+                    <PhasePipeline idx={idx}/>
                   </div>
-                  <PhasePipeline idx={idx}/>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
           <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
             <button onClick={(e) => { e.stopPropagation(); navigate({ page: 'fab_request', id: request.id }); }} style={{
               fontSize: 13, fontWeight: 600, color: '#6c67b8',
@@ -616,6 +704,14 @@ const FabDashboard = ({ navigate }) => {
   const drafts = requests.filter(r => r.status === 'draft');
   const attention = requests.filter(r => r.status === 'returned' || r.status === 'rejected').slice(0, 3);
   const waitingApproval = requests.filter(r => r.status === 'submitted');
+  // Accordion exclusivity: only one row open at a time. `undefined` means
+  // "not yet initialised" (we'll seed it with the first id once the list
+  // resolves); `null` is the user-driven "collapse everything" state and
+  // must persist — don't re-open the first row when that happens.
+  const [expandedId, setExpandedId] = uS(undefined);
+  React.useEffect(() => {
+    if (expandedId === undefined && inProgress.length > 0) setExpandedId(inProgress[0].id);
+  }, [inProgress, expandedId]);
   const activity = uM(() => {
     const items = [];
     requests.forEach(r => {
@@ -710,8 +806,14 @@ const FabDashboard = ({ navigate }) => {
         }}>
           <div>ID</div><div>Title · Phase</div><div>Wafers</div><div>Submitted</div><div/>
         </div>
-        {inProgress.map((r, i) => (
-          <InProgressRow key={r.id} request={r} navigate={navigate} defaultExpanded={i === 0}/>
+        {inProgress.map(r => (
+          <InProgressRow
+            key={r.id}
+            request={r}
+            navigate={navigate}
+            open={expandedId === r.id}
+            onToggle={() => setExpandedId(prev => prev === r.id ? null : r.id)}
+          />
         ))}
       </FabCard>
 
@@ -1171,52 +1273,58 @@ const UrgencyTile = ({ opt, active, onClick }) => (
   </button>
 );
 
-// Expanded card-style picker — shows description so engineers can pick without
-// remembering the acronyms.
-const ExpCard = ({ exp, active, onClick }) => (
-  <button onClick={onClick} style={{
-    display: 'block', textAlign: 'left', width: '100%', padding: '14px 16px',
-    borderRadius: 12, fontFamily: 'inherit', cursor: 'pointer',
-    background: active ? '#f5f4fb' : '#fff',
-    border: `1px solid ${active ? '#6c67b8' : 'rgba(0,0,0,0.12)'}`,
-    boxShadow: active ? '0 0 0 3px rgba(108,103,184,0.10)' : 'none',
-    transition: 'all 0.12s',
-  }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-      <span style={{
-        fontSize: 10.5, fontWeight: 700, padding: '3px 8px', borderRadius: 999,
-        background: exp.group === 'RA' ? '#e8e7f6' : '#d4eaf0',
-        color: exp.group === 'RA' ? '#5550a0' : '#2a7a91',
-        letterSpacing: '0.05em',
-      }}>{exp.group}</span>
-      <span style={{ fontSize: 14.5, color: 'var(--text-primary)', fontWeight: 700, flex: 1 }}>{exp.name}</span>
-      <span style={{
-        width: 18, height: 18, borderRadius: 999, flexShrink: 0,
-        border: `2px solid ${active ? '#6c67b8' : 'rgba(0,0,0,0.16)'}`,
-        background: active ? '#6c67b8' : '#fff',
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      }}>{active && <F.Check size={10} color="#fff" strokeWidth={3}/>}</span>
-    </div>
-    {exp.desc && (
-      <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 8, lineHeight: 1.5 }}>{exp.desc}</div>
-    )}
-  </button>
-);
+// Expanded card-style picker — category badge + full experiment name +
+// description. No short-code chip: backend collapsed to 7 full-name
+// records and the names are descriptive enough on their own.
+const CATEGORY_BADGE = {
+  RA: { bg: '#e8e7f6', fg: '#5550a0' },  // Reliability / stress
+  TM: { bg: '#d4eaf0', fg: '#2a7a91' },  // Test & measurement
+  MA: { bg: '#dfe8d9', fg: '#3f6a32' },  // Materials analysis
+  FA: { bg: '#fbe1d1', fg: '#9a4715' },  // Failure analysis
+};
+const ExpCard = ({ exp, active, onClick }) => {
+  const badge = CATEGORY_BADGE[exp.group] || { bg: '#ecedf0', fg: '#5a5a6e' };
+  return (
+    <button onClick={onClick} style={{
+      display: 'block', textAlign: 'left', width: '100%', padding: '14px 16px',
+      borderRadius: 12, fontFamily: 'inherit', cursor: 'pointer',
+      background: active ? '#f5f4fb' : '#fff',
+      border: `1px solid ${active ? '#6c67b8' : 'rgba(0,0,0,0.12)'}`,
+      boxShadow: active ? '0 0 0 3px rgba(108,103,184,0.10)' : 'none',
+      transition: 'all 0.12s',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{
+          fontSize: 10.5, fontWeight: 700, padding: '3px 8px', borderRadius: 999,
+          background: badge.bg, color: badge.fg, letterSpacing: '0.05em',
+        }}>{exp.group || '—'}</span>
+        <span style={{ fontSize: 14.5, color: 'var(--text-primary)', fontWeight: 700, flex: 1 }}>{exp.name}</span>
+        <span style={{
+          width: 18, height: 18, borderRadius: 999, flexShrink: 0,
+          border: `2px solid ${active ? '#6c67b8' : 'rgba(0,0,0,0.16)'}`,
+          background: active ? '#6c67b8' : '#fff',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        }}>{active && <F.Check size={10} color="#fff" strokeWidth={3}/>}</span>
+      </div>
+      {exp.desc && (
+        <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 8, lineHeight: 1.5 }}>{exp.desc}</div>
+      )}
+    </button>
+  );
+};
 
-const FabNewRequest = ({ navigate, onSubmit, onSaveDraft, draft, isEdit = false, showToast }) => {
-  // Edit mode still runs on the seed-backed local-state path (FabApp callbacks)
-  // because the backend's RequestUpdateIn only accepts title/note/urgency —
-  // it can't replace experiment_type_ids or samples. New-request creation goes
-  // straight to the live API.
+const FabNewRequest = ({ navigate, draft, isEdit = false, showToast }) => {
+  // Edit mode now POSTs the same shape as create — backend lims-backend
+  // SHA 6c187f4 widened PATCH /requests/:id to accept experiment_type_ids
+  // and samples on drafts. (Non-draft requests still 422 on those fields,
+  // which surfaces via the inline error banner.)
   const { data: liveExperiments, error: experimentsError } = useExperimentTypes();
-  const experimentChoices = isEdit
-    ? ALL_EXPERIMENTS
-    : liveExperiments.map(e => ({
-        id: e.id,
-        name: e.name,
-        desc: e.description,
-        group: e.labCategory,
-      }));
+  const experimentChoices = liveExperiments.map(e => ({
+    id: e.id,
+    name: e.name,
+    desc: e.description,
+    group: e.labCategory,
+  }));
 
   const [title, setTitle] = uS(draft?.title || '');
   const [note, setNote] = uS(draft?.note || '');
@@ -1238,30 +1346,35 @@ const FabNewRequest = ({ navigate, onSubmit, onSaveDraft, draft, isEdit = false,
   const valid = basicValid && samplesValid;
 
   const handle = async (publish) => {
-    if (isEdit) {
-      // Legacy local-state path — backend can't yet replay wafer/experiment
-      // edits on a draft. Keep using FabApp's callbacks for now.
-      const expIdsAll = Array.from(new Set(wafers.flatMap(w => w.expIds)));
-      const samples = wafers.map(w => ({ wafer: w.wafer.trim(), size: w.size, status: 'pending' }));
-      const payload = { title: title.trim(), note: note.trim(), urgency, expIds: expIdsAll, samples };
-      if (publish) onSubmit(payload);
-      else onSaveDraft(payload);
-      return;
-    }
-
-    const expIdsAll = Array.from(new Set(wafers.flatMap(w => w.expIds)));
-    const samples = wafers.map(w => ({ wafer_id: w.wafer.trim(), wafer_size: w.size }));
-    const payload = {
-      title: title.trim(),
-      note: note.trim(),
-      urgency,
-      experiment_type_ids: expIdsAll,
-      samples,
-    };
-
     setBusy(true);
     setApiError(null);
     try {
+      const expIdsAll = Array.from(new Set(wafers.flatMap(w => w.expIds)));
+      const samples = wafers.map(w => ({ wafer_id: w.wafer.trim(), wafer_size: w.size }));
+      const payload = {
+        title: title.trim(),
+        note: note.trim(),
+        urgency,
+        experiment_type_ids: expIdsAll,
+        samples,
+      };
+
+      if (isEdit) {
+        // Full PATCH — backend lims-backend SHA 6c187f4 widened
+        // RequestUpdateIn on drafts. Non-draft requests will 422 on
+        // experiment_type_ids/samples and surface in the banner.
+        await window.api.requests.update(draft.id, payload);
+        if (publish) {
+          await window.api.requests.submit(draft.id);
+          showToast && showToast(`Draft #${draft.id} submitted — awaiting approval`);
+          navigate({ page: 'fab_request', id: draft.id });
+        } else {
+          showToast && showToast(`Draft #${draft.id} updated`);
+          navigate({ page: 'fab_drafts' });
+        }
+        return;
+      }
+
       const created = await window.api.requests.create(payload);
       if (publish) {
         await window.api.requests.submit(created.id);
@@ -1569,10 +1682,61 @@ const CancelRequestModal = ({ requestId, onClose, onCancelled, showToast }) => {
   );
 };
 
+// Per-sample experiment rollup lookup. The request detail payload only
+// carries the request-level experiment list — done/pending state lives
+// on /samples/:id/experiments (gap §2.8). Fetch one rollup per sample in
+// parallel and return a Map keyed by sample id so the experiments-by-wafer
+// card can look up each row in O(1).
+const useSampleExperimentsForRequest = (samples) => {
+  const [byId, setById] = uS({});
+  const [loading, setLoading] = uS(false);
+  const ids = (samples || []).map(s => s.id).filter(v => v != null);
+  const key = ids.join(',');
+  React.useEffect(() => {
+    if (!window.api || !window.api.samples || ids.length === 0) {
+      setById({});
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    Promise.all(ids.map(sid =>
+      window.api.samples.getExperiments(sid)
+        .then(rows => [sid, rows])
+        .catch(() => [sid, []])
+    ))
+      .then(pairs => {
+        if (cancelled) return;
+        const next = {};
+        pairs.forEach(([sid, rows]) => { next[sid] = rows; });
+        setById(next);
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [key]);
+  return { byId, loading };
+};
+
 const FabRequestDetail = ({ id, navigate, showToast }) => {
   const { data: r, loading, error, refresh } = useRequestDetail(id);
   const { data: liveTypes } = useExperimentTypes();
+  const { byId: expsBySample } = useSampleExperimentsForRequest(r?.samples);
   const [cancelOpen, setCancelOpen] = uS(false);
+  const [shipBusy, setShipBusy] = uS(false);
+
+  const onShip = async () => {
+    if (!r) return;
+    if (!window.confirm('Ship all wafers for this request to the lab?')) return;
+    setShipBusy(true);
+    try {
+      await window.api.requests.ship(r.id);
+      showToast && showToast('Wafers shipped');
+      refresh();
+    } catch (e) {
+      showToast && showToast(`Ship failed: ${e.message || e}`);
+    } finally {
+      setShipBusy(false);
+    }
+  };
 
   if (loading && !r) {
     return (
@@ -1647,23 +1811,37 @@ const FabRequestDetail = ({ id, navigate, showToast }) => {
           }}>#{String(r.id).padStart(4, '0')}</span>
           <StatusPill status={r.status} size="md"/>
           <UrgencyPill urgency={r.urgency} size="md"/>
-          {r.status !== 'draft' && r.status !== 'cancelled' && (
+          {r.status !== 'draft' && r.status !== 'cancelled' && r.status !== 'submitted' && overallIdx >= 0 && (
             <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
               Currently at <strong style={{ color: 'var(--text-primary)' }}>{WAFER_PHASES[overallIdx]}</strong>
             </span>
           )}
         </span>
       }
-      right={canCancel && (
-        <button onClick={() => setCancelOpen(true)} style={{
-          padding: '9px 15px', borderRadius: 8,
-          background: '#fff', color: '#c0394a',
-          fontWeight: 600, fontSize: 13, cursor: 'pointer',
-          border: '1px solid #f4c8c8',
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          fontFamily: 'inherit',
-        }}><F.X size={14} strokeWidth={2.5}/> Cancel Request</button>
-      )}
+      right={
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+          {r.rawStatus === 'approved' && (
+            <button onClick={onShip} disabled={shipBusy} style={{
+              padding: '9px 15px', borderRadius: 8,
+              background: shipBusy ? '#cbcbd6' : '#6c67b8', color: '#fff',
+              fontWeight: 600, fontSize: 13, cursor: shipBusy ? 'not-allowed' : 'pointer',
+              border: 'none',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              fontFamily: 'inherit',
+            }}><F.Package size={14} strokeWidth={2.5}/> {shipBusy ? 'Shipping…' : 'Ship Wafers'}</button>
+          )}
+          {canCancel && (
+            <button onClick={() => setCancelOpen(true)} style={{
+              padding: '9px 15px', borderRadius: 8,
+              background: '#fff', color: '#c0394a',
+              fontWeight: 600, fontSize: 13, cursor: 'pointer',
+              border: '1px solid #f4c8c8',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              fontFamily: 'inherit',
+            }}><F.X size={14} strokeWidth={2.5}/> Cancel Request</button>
+          )}
+        </span>
+      }
     >
       {/* Overview card — metrics + approval history all in the first block */}
       <FabCard padding={0} style={{ marginBottom: 18 }}>
@@ -1738,7 +1916,10 @@ const FabRequestDetail = ({ id, navigate, showToast }) => {
         <PlainCardHeader right={
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 14, fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ width: 9, height: 9, borderRadius: 999, background: '#157a4a' }}/>Done
+              <span style={{ width: 9, height: 9, borderRadius: 999, background: '#157a4a' }}/>Pass
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ width: 9, height: 9, borderRadius: 999, background: '#a93445' }}/>Fail
             </span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
               <span style={{ width: 9, height: 9, borderRadius: 999, background: 'transparent', border: '1.5px dashed #cbcbd6' }}/>Pending
@@ -1750,13 +1931,14 @@ const FabRequestDetail = ({ id, navigate, showToast }) => {
         </PlainCardHeader>
         <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12, background: '#fafafd' }}>
           {r.samples.map((s, si) => {
+            // Wafer-side rollup from /samples/:id/experiments (gap §2.8).
+            // Joined with the request's exps so we render in a stable
+            // experiment-order and fall back to "pending" before the
+            // per-sample fetch lands.
+            const rollup = expsBySample[s.id] || [];
+            const rollupByExpId = new Map(rollup.map(row => [row.experimentTypeId, row]));
             const total = exps.length;
-            // Per-experiment done/pending state lives on the wafer's
-            // WIP → Dispatch → ExperimentResult chain — until the §2.8 wafer
-            // rollup endpoint lands, the detail payload can't tell us which
-            // experiments finished. Render every chip as pending and skip
-            // the result block rather than fake data.
-            const doneCount = 0;
+            const doneCount = exps.filter(e => rollupByExpId.get(e.id)?.status === 'done').length;
             return (
               <div key={si} style={{
                 background: '#fff', borderRadius: 12,
@@ -1775,45 +1957,45 @@ const FabRequestDetail = ({ id, navigate, showToast }) => {
                     <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 4, marginLeft: 23 }}>{s.size}</div>
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {exps.map((e, ei) => {
-                      const done = ei < doneCount;
+                    {exps.map(e => {
+                      const row = rollupByExpId.get(e.id);
+                      const st  = row?.status || 'pending';
+                      const v   = row?.verdict || null;
+                      const done = st === 'done';
+                      const pass = done && v === 'pass';
+                      const fail = done && v === 'fail';
                       return (
                         <span key={e.id} style={{
                           display: 'inline-flex', alignItems: 'center', gap: 7,
                           padding: '6px 12px 6px 7px', borderRadius: 999,
-                          background: done ? '#e7f6ec' : '#f4f4f7',
-                          border: `1px solid ${done ? '#9ad9b7' : 'rgba(0,0,0,0.08)'}`,
+                          background: fail ? '#fde4e4' : done ? '#e7f6ec' : '#f4f4f7',
+                          border: `1px solid ${fail ? '#f4b4b9' : done ? '#9ad9b7' : 'rgba(0,0,0,0.08)'}`,
                         }}>
                           <span style={{
                             fontSize: 10, fontWeight: 700, padding: '3px 7px', borderRadius: 999,
-                            background: done ? '#157a4a' : '#cbcbd6',
+                            background: fail ? '#a93445' : done ? '#157a4a' : '#cbcbd6',
                             color: '#fff', letterSpacing: '0.05em',
                           }}>{e.group}</span>
                           <span style={{
                             fontSize: 13, fontWeight: 500,
-                            color: done ? '#1f3d2c' : '#a8a8b8',
+                            color: fail ? '#5a1a22' : done ? '#1f3d2c' : '#a8a8b8',
                           }}>{e.name}</span>
-                          {done
-                            ? <F.Check size={13} color="#157a4a" strokeWidth={3}/>
-                            : <span style={{ width: 13, height: 13, borderRadius: 999, border: '1.5px dashed #cbcbd6' }}/>}
+                          {fail
+                            ? <F.X size={13} color="#a93445" strokeWidth={3}/>
+                            : done
+                              ? <F.Check size={13} color="#157a4a" strokeWidth={3}/>
+                              : <span style={{ width: 13, height: 13, borderRadius: 999, border: '1.5px dashed #cbcbd6' }}/>}
                         </span>
                       );
                     })}
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, color: doneCount === total ? '#157a4a' : '#1e1e24', letterSpacing: '-0.01em' }}>
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, color: doneCount === total && total > 0 ? '#157a4a' : '#1e1e24', letterSpacing: '-0.01em' }}>
                       {doneCount}<span style={{ color: '#a8a8b8', fontWeight: 500 }}>/{total}</span>
                     </div>
                     <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2 }}>done</div>
                   </div>
                 </div>
-                {/*
-                  Per-experiment result block intentionally removed for v1.
-                  The real summary/verdict/note lives on the wafer's
-                  WIP → Dispatch → ExperimentResult chain, which is not on
-                  RequestDetailOut yet (see INTEGRATION_GAPS.md §2.8 wafer
-                  rollup). Reintroduce once that endpoint lands.
-                */}
               </div>
             );
           })}
@@ -1833,8 +2015,42 @@ const FabRequestDetail = ({ id, navigate, showToast }) => {
 };
 
 // ── Root container ────────────────────────────────────────────
+const FabDraftEdit = ({ id, navigate, showToast }) => {
+  // Fetch the draft via the live API and hand it to FabNewRequest in edit
+  // mode. The legacy path looked up the draft on FabApp's seed-only local
+  // state, so anything created after login was unreachable from the
+  // Drafts → Continue button.
+  const { data: draft, loading, error } = useRequestDetail(id);
+  if (loading && !draft) {
+    return (
+      <FabPage title="Loading draft…">
+        <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
+          Loading…
+        </div>
+      </FabPage>
+    );
+  }
+  if (error || !draft) {
+    return (
+      <FabPage
+        breadcrumb={
+          <button onClick={() => navigate({ page: 'fab_drafts' })} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            fontSize: 13, fontWeight: 600, color: '#6c67b8', marginBottom: 14, cursor: 'pointer',
+          }}><F.ChevronLeft size={14}/> Drafts</button>
+        }
+        title="Draft not found"
+      >
+        <div style={{ padding: 24, color: '#c0394a', fontSize: 14 }}>
+          {error || 'This draft is no longer available.'}
+        </div>
+      </FabPage>
+    );
+  }
+  return <FabNewRequest navigate={navigate} draft={draft} isEdit showToast={showToast}/>;
+};
+
 const FabApp = ({ route, navigate }) => {
-  const [requests, setRequests] = uS(REQUEST_SEED);
   const [toast, setToast] = uS(null);
 
   const showToast = (msg) => {
@@ -1842,47 +2058,12 @@ const FabApp = ({ route, navigate }) => {
     setTimeout(() => setToast(null), 2200);
   };
 
-  const submitNew = (payload, editingId = null) => {
-    const now = new Date().toISOString().slice(0, 16).replace('T', ' ');
-    if (editingId != null) {
-      setRequests(rs => rs.map(r => r.id === editingId ? {
-        ...r, ...payload, status: 'submitted', submitted: now,
-        history: [...(r.history || []), { action: 'SUBMIT', by: 'fab_user', at: now }],
-      } : r));
-      showToast(`Draft #${editingId} submitted — awaiting approval`);
-      navigate({ page: 'fab_request', id: editingId });
-      return;
-    }
-    const id = Math.max(...requests.map(r => r.id), 0) + 1;
-    setRequests(rs => [{ id, ...payload, status: 'submitted', created: now, submitted: now, history: [{ action: 'SUBMIT', by: 'fab_user', at: now }] }, ...rs]);
-    showToast(`Request #${id} submitted — awaiting approval`);
-    navigate({ page: 'fab_request', id });
-  };
-  const saveDraft = (payload, editingId = null) => {
-    const now = new Date().toISOString().slice(0, 16).replace('T', ' ');
-    if (editingId != null) {
-      setRequests(rs => rs.map(r => r.id === editingId ? { ...r, ...payload, status: 'draft' } : r));
-      showToast(`Draft #${editingId} updated`);
-      navigate({ page: 'fab_drafts' });
-      return;
-    }
-    const id = Math.max(...requests.map(r => r.id), 0) + 1;
-    setRequests(rs => [{ id, ...payload, status: 'draft', created: now, submitted: null, history: [] }, ...rs]);
-    showToast(`Draft #${id} saved`);
-    navigate({ page: 'fab_drafts' });
-  };
   let page = null;
   if (route.page === 'fab_dashboard') page = <FabDashboard navigate={navigate}/>;
   else if (route.page === 'fab_requests') page = <FabRequestList navigate={navigate} initialTab={route.tab || 'all'}/>;
   else if (route.page === 'fab_drafts') page = <FabRequestList navigate={navigate} drafts titleOverride="Drafts"/>;
-  else if (route.page === 'fab_new')      page = <FabNewRequest navigate={navigate} onSubmit={submitNew} onSaveDraft={saveDraft} showToast={showToast}/>;
-  else if (route.page === 'fab_draft_edit') {
-    const d = requests.find(r => r.id === route.id);
-    page = d
-      ? <FabNewRequest navigate={navigate} draft={d} isEdit showToast={showToast}
-          onSubmit={(p) => submitNew(p, d.id)} onSaveDraft={(p) => saveDraft(p, d.id)}/>
-      : <FabRequestList navigate={navigate} drafts titleOverride="Drafts"/>;
-  }
+  else if (route.page === 'fab_new')      page = <FabNewRequest navigate={navigate} showToast={showToast}/>;
+  else if (route.page === 'fab_draft_edit') page = <FabDraftEdit id={route.id} navigate={navigate} showToast={showToast}/>;
   else if (route.page === 'fab_request')  page = <FabRequestDetail id={route.id} navigate={navigate} showToast={showToast}/>;
   else page = <FabDashboard navigate={navigate}/>;
 

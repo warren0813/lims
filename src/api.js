@@ -79,7 +79,8 @@
     received: 'received',
     receiving_exception: 'rejected',
     split: 'received',
-    processing_exception: 'in_wip',
+    processing: 'processing',
+    processing_exception: 'rejected',
     completed: 'completed',
     lost: 'rejected',
     returned: 'returned',
@@ -91,8 +92,11 @@
     dispatched: 'dispatched',
     running: 'running',
     unloaded: 'unloaded',
-    result_recorded: 'result_recorded',
-    completed: 'result_recorded',
+    // Backend's record_result now flips the dispatch straight to
+    // `completed` (no `result_recorded` intermediate). Map both to the
+    // same terminal FE state so the UI shows a single Completed pill.
+    result_recorded: 'completed',
+    completed: 'completed',
     execution_exception: 'exception',
     pending_redispatch: 'exception',
     aborted: 'aborted',
@@ -128,7 +132,11 @@
       id: r.id,
       title: r.title,
       status: REQUEST_STATUS_MAP[r.status] || r.status,
-      raw_status: r.status,                                  // keep for state-machine calls
+      // `status` collapses three backend states into FE `in_progress`; pages
+      // that need to disambiguate (e.g. show Ship only on `approved`) should
+      // read `rawStatus`. `raw_status` snake alias kept for legacy consumers.
+      rawStatus: r.status,
+      raw_status: r.status,
       urgency: r.urgency || '1w',                            // backend default since §2.2
       requester: r.requester,
       note: r.note,
@@ -168,6 +176,29 @@
     };
   }
 
+  // GET /samples/:id/experiments returns the wafer-side rollup that
+  // joins request.experiment_types with the latest dispatch + verdict for
+  // each one. Backend shape per row:
+  //   { experiment_type: {id, name}, status: 'done'|'pending'|'running',
+  //     verdict: 'pass'|'fail'|null, dispatch_id: number|null,
+  //     result: {id, comment, created_at}|null }
+  // Verdict lives at the row level (per-sample/per-experiment); the
+  // dispatch-level `result` is just a free-text comment now.
+  function normalizeSampleExperiments(rows) {
+    return (rows || []).map(r => ({
+      experimentTypeId: r.experiment_type?.id ?? null,
+      experimentName:   r.experiment_type?.name ?? '',
+      status:           r.status,
+      verdict:          r.verdict ?? null,
+      dispatchId:       r.dispatch_id ?? null,
+      result: r.result ? {
+        id:        r.result.id,
+        comment:   r.result.comment ?? '',
+        recordedAt: formatTimestamp(r.result.created_at),
+      } : null,
+    }));
+  }
+
   function normalizeSampleRow(s) {
     // Backend has no `in_wip` status — gap §3.2 calls for the adapter to
     // derive it. `has_wip` is now annotated on SampleListOut/DetailOut, so
@@ -177,11 +208,15 @@
     const mapped = SAMPLE_STATUS_MAP[s.status] || s.status;
     const hasWip = s.has_wip ?? false;
     const status = (mapped === 'received' && hasWip) ? 'in_wip' : mapped;
+    // SampleListOut carries `request_id` (int); SampleDetailOut nests
+    // `request: {id, title}` instead. Accept both shapes so callers don't
+    // care which endpoint produced the row.
     return {
       id: s.id,
       wafer: s.wafer_id,
       size: s.wafer_size,
-      requestId: s.request_id,
+      requestId: s.request_id ?? s.request?.id ?? null,
+      requestTitle: s.request?.title ?? null,
       status,
       raw_status: s.status,
       hasWip,
@@ -256,11 +291,13 @@
       completedAtIso: d.completed_at ?? null,
       created: formatTimestamp(d.created_at),
       estimatedDurationSeconds: d.estimated_duration_seconds ?? null,
+      // Dispatch-level result is just a free-text comment now. Per-wafer
+      // verdicts live on SampleExperimentStatus.verdict (read via
+      // /samples/:id/experiments).
       result: d.result ? {
-        summary: d.result.summary,
-        verdict: d.result.verdict,
-        data: d.result.data,
-        source: d.result.data_source,
+        id: d.result.id,
+        comment: d.result.comment ?? '',
+        recordedAt: formatTimestamp(d.result.created_at),
       } : null,
     };
   }
@@ -560,6 +597,9 @@
       async get(id) {
         return normalizeSampleRow(await call(`/samples/${id}`));
       },
+      async getExperiments(id) {
+        return normalizeSampleExperiments(await call(`/samples/${id}/experiments`));
+      },
       async receive(id) {
         return normalizeSampleRow(await call(`/samples/${id}/receive`, { method: 'POST' }));
       },
@@ -655,24 +695,12 @@
       async unload(id) {
         return normalizeDispatch(await call(`/dispatches/${id}/unload/`, { method: 'POST' }));
       },
-      async recordResult(id, payload) {
-        // payload = { summary, verdict: 'pass'|'fail', data?, note? }
-        // Backend `ExperimentResultIn.data` is a dict — accept either an
-        // object or a JSON string from callers (the existing form UI emits
-        // a raw JSON string), and coerce to an object before POSTing.
-        let normalized = payload;
-        if (payload && typeof payload.data === 'string') {
-          let parsed = {};
-          try { parsed = payload.data.trim() ? JSON.parse(payload.data) : {}; }
-          catch (_e) {
-            const err = new Error('Result data must be valid JSON.');
-            err.status = 400;
-            throw err;
-          }
-          normalized = { ...payload, data: parsed };
-        }
+      async recordResult(id, { comment = '' } = {}) {
+        // payload = { comment } — backend record_result is now comment-only
+        // and closes the dispatch directly to `completed`. Per-wafer
+        // verdicts are owned by the SampleExperimentStatus rows.
         return normalizeDispatch(await call(`/dispatches/${id}/record-result/`, {
-          method: 'POST', body: normalized,
+          method: 'POST', body: { comment },
         }));
       },
       async complete(id) {

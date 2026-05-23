@@ -6,7 +6,7 @@ const { useState: lS, useMemo: lM } = React;
 const LF = window.I;
 
 // ── Domain ──────────────────────────────────────────────────────
-const TODAY = '2026-05-11';
+const TODAY = new Date().toISOString().slice(0, 10);
 
 const EXPERIMENTS = [
   { id: 'tct',  code: 'TCT',  name: 'Temperature Cycling Test' },
@@ -111,8 +111,16 @@ const useWipCreationData = () => {
       window.api.equipment.list(),
     ])
       .then(async ([exps, allSamples, equip]) => {
-        // Coarse filter: received at the lab + not yet on a non-terminal WIP.
-        const eligible = allSamples.filter(s => s.raw_status === 'received' && !s.hasWip);
+        // Coarse filter: at the lab (received or already processing for a
+        // different experiment) + not currently locked to an active WIP.
+        // Processing wafers still need to land in new WIPs when their parent
+        // request requires more experiments — e.g. a TCT-processed wafer
+        // still owes CP + FT, which become eligible once its first WIP closes.
+        // Backend would 400 on a duplicate (sample,experiment) WIP anyway;
+        // see INTEGRATION_GAPS.md §2.8 follow-up for a finer pre-check.
+        const eligible = allSamples.filter(s =>
+          (s.raw_status === 'received' || s.raw_status === 'processing') && !s.hasWip
+        );
         const reqIds = Array.from(new Set(eligible.map(s => s.requestId)));
         const reqDetails = await Promise.all(
           reqIds.map(id => window.api.requests.get(id).catch(() => null))
@@ -176,27 +184,64 @@ const useLabEquipment = () => {
 const useLabDispatchDetail = (id) => {
   const [d, setD] = lS(null);
   const [recipeById, setRecipeById] = lS(new Map());
+  // Per-wafer verdict rows for this dispatch. Pulled from each sample's
+  // /samples/:id/experiments rollup, filtered to rows where dispatch_id
+  // matches this dispatch — backend's dispatch detail doesn't carry
+  // per-sample verdicts, so we join client-side.
+  const [waferResults, setWaferResults] = lS([]);
   const [loading, setLoading] = lS(true);
   const [error, setError] = lS(null);
   const refresh = React.useCallback(() => {
     if (id == null || !window.api || !window.api.dispatches) { setLoading(false); return; }
     setLoading(true);
-    Promise.all([
-      window.api.dispatches.get(id),
-      window.api.recipes.list().catch(() => []),
-    ])
-      .then(([dp, rs]) => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [dp, rs] = await Promise.all([
+          window.api.dispatches.get(id),
+          window.api.recipes.list().catch(() => []),
+        ]);
+        if (cancelled) return;
         setD(dp);
         setRecipeById(new Map(rs.map(r => [r.id, r])));
+        // Look up the parent WIP to enumerate the samples on this
+        // dispatch, then fetch each sample's rollup in parallel.
+        const wip = await window.api.wips.get(dp.wipId).catch(() => null);
+        if (cancelled) return;
+        const samples = wip?.samples || [];
+        const rollups = await Promise.all(samples.map(s =>
+          window.api.samples.getExperiments(s.id)
+            .then(rows => ({ sample: s, rows }))
+            .catch(() => ({ sample: s, rows: [] }))
+        ));
+        if (cancelled) return;
+        const wafers = rollups.map(({ sample, rows }) => {
+          const match = rows.find(r => r.dispatchId === dp.id);
+          return {
+            sampleId: sample.id,
+            wafer:    sample.wafer,
+            size:     sample.size,
+            verdict:  match?.verdict ?? null,
+            status:   match?.status ?? null,
+          };
+        });
+        setWaferResults(wafers);
         setError(null);
-      })
-      .catch(err => setError(err.message || String(err)))
-      .finally(() => setLoading(false));
+      } catch (e) {
+        if (!cancelled) setError(e.message || String(e));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [id]);
-  React.useEffect(() => { refresh(); }, [refresh]);
+  React.useEffect(() => {
+    const cleanup = refresh();
+    return cleanup;
+  }, [refresh]);
   // Attach recipe params (if known) so the consumer doesn't have to look up.
   const dispatch = d ? { ...d, recipeParams: recipeById.get(d.recipeId)?.params || null } : null;
-  return { dispatch, loading, error, refresh };
+  return { dispatch, waferResults, loading, error, refresh };
 };
 
 // Live dispatch list. The /dispatches/ endpoint carries only ids, so the
@@ -273,15 +318,75 @@ const useLabWips = () => {
   return { wips, loading, error, refresh };
 };
 
-// Live tile-count fetch for the Lab Dashboard. Mirrors the fab dashboard's
-// useRequests pattern but pulls three lists in parallel so the four count
-// tiles (Incoming wafers / Active WIPs / Dispatches live / To record) all
-// reflect the same snapshot. Returns the raw normalized lists; the
-// dashboard derives the counts client-side.
+// Live wafer-detail co-fetch. Backend doesn't expose `wip_id` on Sample
+// nor a `?sample_id=` filter on /wips/ yet, so we have to scan the
+// non-terminal WIPs and look up the one containing this sample. For demo
+// data volumes (<10 active WIPs) this is fine; if WIP counts grow this
+// should become a dedicated backend endpoint (gap follow-up).
+const useWaferDetail = (id) => {
+  const [data, setData] = lS(null);
+  const [loading, setLoading] = lS(true);
+  const [error, setError] = lS(null);
+  const refresh = React.useCallback(() => {
+    if (id == null || !window.api) { setLoading(false); return; }
+    setLoading(true);
+    setError(null);
+    let cancelled = false;
+    (async () => {
+      try {
+        const sample = await window.api.samples.get(id);
+        if (cancelled) return;
+        // Parent request — gives us urgency + experiment_type_ids/names.
+        // The per-experiment rollup (gap §2.8) now lives on
+        // /samples/:id/experiments — fetch alongside the request so we
+        // don't need to scan WIPs to derive done/pending state.
+        const [request, experiments] = await Promise.all([
+          window.api.requests.get(sample.requestId).catch(() => null),
+          window.api.samples.getExperiments(sample.id).catch(() => []),
+        ]);
+        // Locate the active WIP that holds this sample (only needed
+        // for the WIP-detail back-link); skip the scan if there isn't one.
+        let wip = null;
+        if (sample.hasWip) {
+          const wipList = await window.api.wips.list({ status: 'in_progress' }).catch(() => []);
+          for (const row of wipList) {
+            if (cancelled) return;
+            const detail = await window.api.wips.get(row.id).catch(() => null);
+            if (detail?.samples?.some(s => s.id === sample.id)) {
+              wip = detail;
+              break;
+            }
+          }
+        }
+        if (cancelled) return;
+        setData({ sample, request, wip, experiments });
+      } catch (e) {
+        if (!cancelled) setError(e.message || String(e));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [id]);
+  React.useEffect(() => {
+    const cleanup = refresh();
+    return cleanup;
+  }, [refresh]);
+  return { data, loading, error, refresh };
+};
+
+// Live snapshot for the Lab Dashboard: tile counts come from the first
+// three lists (samples / wips / dispatches), the Now Running / Awaiting
+// Your Result panels read from the same dispatches array, and the
+// Equipment panel reads from /equipment/. Experiment types are joined in
+// so dispatch rows can render an experiment name (DispatchListOut only
+// carries ids — gap §3.7-ish; until backend exposes names on the list
+// schema we lookup client-side, same trick as `useLabDispatches`).
 const useLabDashboardData = () => {
   const [samples, setSamples] = lS([]);
   const [wips, setWips] = lS([]);
   const [dispatches, setDispatches] = lS([]);
+  const [equipment, setEquipment] = lS([]);
   const [loading, setLoading] = lS(true);
   const [error, setError] = lS(null);
   const refresh = React.useCallback(() => {
@@ -291,15 +396,31 @@ const useLabDashboardData = () => {
       window.api.samples.list(),
       window.api.wips.list(),
       window.api.dispatches.list(),
+      window.api.equipment.list().catch(() => []),
+      window.api.experimentTypes.list().catch(() => []),
     ])
-      .then(([ss, ws, ds]) => {
-        setSamples(ss); setWips(ws); setDispatches(ds); setError(null);
+      .then(([ss, ws, ds, eqs, exps]) => {
+        // Mirror useLabSamples — fab-side unshipped wafers (raw_status='created')
+        // shouldn't drive the lab dashboard tile counts either.
+        setSamples(ss.filter(s => s.raw_status !== 'created'));
+        setWips(ws);
+        setEquipment(eqs);
+        const expById = new Map(exps.map(e => [e.id, e]));
+        const eqById = new Map(eqs.map(e => [e.id, e]));
+        // DispatchListOut doesn't include experiment/equipment names; join
+        // client-side so the dashboard rows don't have to know.
+        setDispatches(ds.map(d => ({
+          ...d,
+          experimentName: expById.get(d.experimentId)?.name || null,
+          equipmentName: eqById.get(d.equipmentId)?.name || null,
+        })));
+        setError(null);
       })
       .catch(err => setError(err.message || String(err)))
       .finally(() => setLoading(false));
   }, []);
   React.useEffect(() => { refresh(); }, [refresh]);
-  return { samples, wips, dispatches, loading, error, refresh };
+  return { samples, wips, dispatches, equipment, loading, error, refresh };
 };
 
 // Live samples list. Co-fetches /requests/ so each row can show the
@@ -322,7 +443,12 @@ const useLabSamples = () => {
       window.api.requests.list().catch(() => []),
     ])
       .then(([ss, rs]) => {
-        setSamples(ss);
+        // Hide samples the fab user hasn't shipped yet (raw_status='created').
+        // The FE adapter collapses created + shipped both to 'incoming', so
+        // without this filter unshipped wafers leak into the lab view and
+        // tempt the lab user into Receive → backend 400.
+        const visible = ss.filter(s => s.raw_status !== 'created');
+        setSamples(visible);
         setRequestsById(new Map(rs.map(r => [r.id, r])));
         setError(null);
       })
@@ -360,16 +486,18 @@ const accent  = '#6c67b8';
 
 const PILL = {
   // wafer
-  incoming:  { label: 'Incoming',  bg: '#fef4dd', fg: '#a06618' },
-  received:  { label: 'Received',  bg: '#e7f0e9', fg: '#2e6a47' },
-  rejected:  { label: 'Rejected',  bg: '#fbe4e6', fg: '#a93445' },
-  in_wip:    { label: 'In WIP',    bg: '#ecebf3', fg: '#4f4a8f' },
-  completed: { label: 'Completed', bg: '#dbeafe', fg: '#1d4ed8' },
+  incoming:   { label: 'Incoming',   bg: '#fef4dd', fg: '#a06618' },
+  received:   { label: 'Received',   bg: '#e7f0e9', fg: '#2e6a47' },
+  rejected:   { label: 'Rejected',   bg: '#fbe4e6', fg: '#a93445' },
+  in_wip:     { label: 'In WIP',     bg: '#ecebf3', fg: '#4f4a8f' },
+  processing: { label: 'Processing', bg: '#ecebf3', fg: '#4f4a8f' },
+  completed:  { label: 'Completed',  bg: '#e7f0e9', fg: '#2e6a47' },
   // urgency
   '3d':      { label: '3 Days',    bg: '#fbe4e6', fg: '#a93445' },
   '1w':      { label: '1 Week',    bg: '#ecebf3', fg: '#4f4a8f' },
   '2w':      { label: '2 Weeks',   bg: '#eef0ed', fg: '#4d5a4f' },
   // wip
+  created:     { label: 'Created',     bg: '#fef4dd', fg: '#a06618' },
   in_progress: { label: 'In Progress', bg: '#ecebf3', fg: '#4f4a8f' },
   aborted:     { label: 'Aborted',     bg: '#fbe4e6', fg: '#a93445' },
   // dispatch
@@ -738,19 +866,41 @@ const EquipmentDots = ({ used, capacity }) => {
   );
 };
 
-const LabDashboard = ({ wafers, wips, dispatches, equipment, navigate }) => {
-  // Tile counts come from a live fetch (samples + wips + dispatches in
-  // parallel). The lower panels — Now Running, Awaiting Your Result,
-  // Equipment — still render from the seed-fed props until those sections
-  // get their own wiring pass.
-  const { samples: liveSamples, wips: liveWips, dispatches: liveDispatches, loading: countsLoading, error: countsError } = useLabDashboardData();
+const LabDashboard = ({ navigate }) => {
+  // All four dashboard panels — tile counts, Now Running, Awaiting Your
+  // Result, Equipment — now read from the live snapshot. No more seed
+  // props from LabApp.
+  const { samples: liveSamples, wips: liveWips, dispatches: liveDispatches, equipment: liveEquipment, loading: countsLoading, error: countsError } = useLabDashboardData();
+  // 1Hz tick keeps the Now Running countdown bars advancing visibly.
+  // Mount the interval only when at least one dispatch is currently
+  // running — same pattern as LabDispatchList / LabDispatchDetail.
+  const [, setTick] = lS(0);
+  const hasRunning = liveDispatches.some(d => d.status === 'running');
+  React.useEffect(() => {
+    if (!hasRunning) return;
+    const h = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(h);
+  }, [hasRunning]);
   const incoming   = liveSamples.filter(s => s.status === 'incoming').length;
   const activeWips = liveWips.filter(w => w.status === 'in_progress').length;
   const runningDps = liveDispatches.filter(d => d.status === 'running').length;
   const needsRecord= liveDispatches.filter(d => d.status === 'unloaded' || d.status === 'exception').length;
 
-  const activeDispatches = dispatches.filter(d => d.status === 'running' || d.status === 'pending');
-  const toRecord = dispatches.filter(d => d.status === 'unloaded' || d.status === 'exception');
+  const activeDispatches = liveDispatches.filter(d => d.status === 'running' || d.status === 'pending' || d.status === 'dispatched').slice(0, 5);
+  const toRecord = liveDispatches.filter(d => d.status === 'unloaded' || d.status === 'exception');
+  // "Live" equipment = anything currently hosting a non-terminal dispatch.
+  // Backend doesn't ship a `running` status (gap §3.4) — compute client-side.
+  const liveEquipmentIds = new Set(
+    liveDispatches
+      .filter(d => d.status === 'running' || d.status === 'pending' || d.status === 'dispatched')
+      .map(d => d.equipmentId)
+  );
+
+  // Subtitle: live username + today (no more hardcoded TODAY constant).
+  const cachedUser = (window.api && window.api.auth && window.api.auth.cachedUser)
+    ? window.api.auth.cachedUser() : null;
+  const subtitleName = cachedUser?.username || 'lab_member';
+  const subtitleDate = new Date().toISOString().slice(0, 10);
 
   // While the initial fetch is in flight, render "—" on the tiles rather
   // than the misleading "0" that an empty filter would produce.
@@ -766,7 +916,7 @@ const LabDashboard = ({ wafers, wips, dispatches, equipment, navigate }) => {
   return (
     <Page
       title="Dashboard"
-      subtitle={`Welcome back, lab_member · ${TODAY}`}
+      subtitle={`Welcome back, ${subtitleName} · ${subtitleDate}`}
     >
       {countsError && (
         <div style={{
@@ -823,9 +973,47 @@ const LabDashboard = ({ wafers, wips, dispatches, equipment, navigate }) => {
               {activeDispatches.length === 0 && (
                 <div style={{ padding: '28px 22px', textAlign: 'center', color: muted, fontSize: 13 }}>No active dispatches</div>
               )}
-              {activeDispatches.map(d => (
-                <RunningDispatchRow key={d.id} d={d} wip={findWip(d.wipId, wips)} navigate={navigate}/>
-              ))}
+              {activeDispatches.map(d => {
+                const totalSec = d.estimatedDurationSeconds || 0;
+                let pct = 0, remainLabel = null;
+                if (d.status === 'running' && d.dispatchedAtIso && totalSec > 0) {
+                  const startMs = new Date(d.dispatchedAtIso).getTime();
+                  const elapsedSec = Math.max(0, (Date.now() - startMs) / 1000);
+                  pct = Math.min(100, (elapsedSec / totalSec) * 100);
+                  remainLabel = `${window.UI.formatDuration(Math.ceil(Math.max(0, totalSec - elapsedSec)))} left`;
+                }
+                return (
+                  <button key={d.id} onClick={() => navigate({ page: 'lab_dispatch_detail', id: d.id })} style={{
+                    display: 'block', width: '100%', textAlign: 'left',
+                    padding: '14px 22px', borderTop: `1px solid ${lineSoft}`,
+                    background: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                  }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-mono)', fontSize: 11.5, color: muted, marginBottom: 3 }}>
+                          <span>{d.code}</span>
+                          <span style={{ color: '#cdcdda' }}>·</span>
+                          <span>{d.equipmentName || '—'}</span>
+                          {totalSec > 0 && <>
+                            <span style={{ color: '#cdcdda' }}>·</span>
+                            <span>est. {window.UI.formatDuration(totalSec)}</span>
+                          </>}
+                        </div>
+                        <div style={{ fontSize: 14, color: ink, fontWeight: 600 }}>{d.experimentName || '—'}</div>
+                      </div>
+                      <Pill kind={d.status} dotted={d.status === 'running'}/>
+                    </div>
+                    {d.status === 'running' && totalSec > 0 && (
+                      <div>
+                        <div style={{ position: 'relative', height: 6, background: '#f1eef9', borderRadius: 999, overflow: 'hidden', marginBottom: 4 }}>
+                          <div style={{ position: 'absolute', inset: 0, width: `${pct}%`, background: 'linear-gradient(90deg, #f4a8bf, #6c67b8)', borderRadius: 999 }}/>
+                        </div>
+                        <div style={{ fontSize: 11, color: accent, fontFamily: 'var(--font-mono)' }}>{remainLabel}</div>
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </Card>
 
@@ -845,25 +1033,22 @@ const LabDashboard = ({ wafers, wips, dispatches, equipment, navigate }) => {
                   background: '#ecebf3', color: '#4f4a8f', fontSize: 11, fontWeight: 700,
                 }}>{toRecord.length}</span>
               </CardHeader>
-              {toRecord.map(d => {
-                const wip = findWip(d.wipId, wips);
-                return (
-                  <button key={d.id} onClick={() => navigate({ page: 'lab_dispatch_detail', id: d.id })} style={{
-                    display: 'grid', gridTemplateColumns: '90px 1fr 130px auto',
-                    alignItems: 'center', gap: 12, width: '100%',
-                    padding: '13px 22px', borderTop: `1px solid ${lineSoft}`,
-                    background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
-                    fontFamily: 'inherit',
-                  }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, color: text2 }}>{d.id}</span>
-                    <span style={{ fontSize: 13.5, color: ink, fontWeight: 600 }}>{findExp(d.experimentId)?.name}</span>
-                    <Pill kind={d.status}/>
-                    <span style={{ fontSize: 12, color: accent, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                      Record <LF.ArrowRight size={12} color={accent}/>
-                    </span>
-                  </button>
-                );
-              })}
+              {toRecord.map(d => (
+                <button key={d.id} onClick={() => navigate({ page: 'lab_dispatch_detail', id: d.id })} style={{
+                  display: 'grid', gridTemplateColumns: '90px 1fr 130px auto',
+                  alignItems: 'center', gap: 12, width: '100%',
+                  padding: '13px 22px', borderTop: `1px solid ${lineSoft}`,
+                  background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  fontFamily: 'inherit',
+                }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, color: text2 }}>{d.code}</span>
+                  <span style={{ fontSize: 13.5, color: ink, fontWeight: 600 }}>{d.experimentName || '—'}</span>
+                  <Pill kind={d.status}/>
+                  <span style={{ fontSize: 12, color: accent, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    Record <LF.ArrowRight size={12} color={accent}/>
+                  </span>
+                </button>
+              ))}
             </Card>
           )}
         </div>
@@ -873,13 +1058,15 @@ const LabDashboard = ({ wafers, wips, dispatches, equipment, navigate }) => {
             <LF.Equipment size={13} color={text2}/>
             <span>Equipment</span>
             <span style={{ marginLeft: 'auto', fontSize: 11, color: muted, fontWeight: 600 }}>
-              {equipment.filter(e => e.status === 'running').length}/{equipment.length} live
+              {liveEquipmentIds.size}/{liveEquipment.length} live
             </span>
           </CardHeader>
           <div>
-            {equipment.map(e => {
-              const wip = e.currentWipId ? findWip(e.currentWipId, wips) : null;
-              const used = wip ? wip.waferIds.length : 0;
+            {liveEquipment.length === 0 && (
+              <div style={{ padding: '24px 20px', textAlign: 'center', color: muted, fontSize: 13 }}>No equipment defined</div>
+            )}
+            {liveEquipment.map(e => {
+              const isLive = liveEquipmentIds.has(e.id);
               return (
                 <button key={e.id} onClick={() => navigate({ page: 'lab_equipment' })} style={{
                   display: 'block', width: '100%', textAlign: 'left',
@@ -891,13 +1078,14 @@ const LabDashboard = ({ wafers, wips, dispatches, equipment, navigate }) => {
                   onMouseLeave={(ev) => ev.currentTarget.style.background = '#fff'}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 4 }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, fontWeight: 700, color: ink }}>{e.id}</span>
-                    <Pill kind={e.status} dotted={e.status === 'running'}/>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, fontWeight: 700, color: ink }}>{e.name}</span>
+                    <Pill kind={e.status} dotted={isLive}/>
                   </div>
                   <div style={{ fontSize: 11.5, color: muted }}>
-                    {wip ? `${wip.id} · ${used}/${e.capacity}` : e.status === 'maintenance' ? 'Under maintenance' : `Idle · cap ${e.capacity}`}
+                    {isLive
+                      ? `Running · cap ${e.capacity}`
+                      : (e.status === 'maintenance' ? 'Under maintenance' : `Idle · cap ${e.capacity}`)}
                   </div>
-                  <EquipmentDots used={used} capacity={e.capacity}/>
                 </button>
               );
             })}
@@ -913,17 +1101,21 @@ const LabDashboard = ({ wafers, wips, dispatches, equipment, navigate }) => {
 // defines the window (3 Days / 1 Week / 2 Weeks). Rows tinted red are
 // at or past the deadline.
 const URGENCY_DAYS = { '3d': 3, '1w': 7, '2w': 14 };
-// Pinned "now" so the demo data is meaningful regardless of when the file is
-// opened — matches the TODAY const used elsewhere on the lab side.
-const TODAY_MS = new Date(TODAY + 'T12:00:00').getTime();
 const computeRemaining = (w) => {
+  // No arrival timestamp — countdown can't start. Catches samples that
+  // jumped to a terminal state (`lost` / `voided` / `returned` /
+  // `processing_exception` etc.) without ever transitioning through
+  // `received`, so `arrivedAt` is null. Prior to this guard, calling
+  // `.replace()` on null blew up the whole Samples page with a white
+  // screen.
+  if (!w.arrivedAt) return null;
   // Until a wafer is received the countdown hasn't started — show nothing.
   // Rejected wafers also don't carry a meaningful deadline.
   if (w.status === 'incoming' || w.status === 'rejected') return null;
   const days = URGENCY_DAYS[w.urgency] ?? 7;
   const start = new Date(w.arrivedAt.replace(' ', 'T') + ':00').getTime();
   const deadline = start + days * 86400000;
-  return deadline - TODAY_MS;
+  return deadline - Date.now();
 };
 const formatRemaining = (ms) => {
   if (ms == null) return { text: '—', level: 'none' };
@@ -1115,65 +1307,111 @@ const LabSamples = ({ navigate, defaultTab = 'all', showToast }) => {
 };
 
 // ── Wafer detail ────────────────────────────────────────────────
-const LabWaferDetail = ({ id, wafers, wips, dispatches, navigate, onReceive, onReject }) => {
-  const w = findWaf(id, wafers);
-  if (!w) return <Page title="Wafer not found"/>;
-  const wip = w.wipId ? findWip(w.wipId, wips) : null;
-  const wipDispatches = wip ? dispatchesOf(wip.id, dispatches) : [];
+const LabWaferDetail = ({ id, navigate, showToast }) => {
+  const { data, loading, error, refresh } = useWaferDetail(id);
+  const { data: expTypes } = useLabExperimentTypes();
+  const [busy, setBusy] = lS(false);
+  const [actionError, setActionError] = lS(null);
 
-  // Resolve every required experiment + its execution state for this wafer.
-  // A dispatch with status=result_recorded against a WIP we passed through counts
-  // as "done"; running/pending counts as "in progress"; otherwise it's pending.
-  const expRows = (w.expIds || []).map(expId => {
-    const exp = findExp(expId);
-    // Look across all dispatches for this wafer's current WIP that match this experiment.
-    const dps = wipDispatches.filter(d => d.experimentId === expId);
-    const recorded = dps.find(d => d.status === 'result_recorded');
-    const running  = dps.find(d => d.status === 'running' || d.status === 'pending' || d.status === 'dispatched');
-    let state = 'pending';
-    if (recorded) state = 'recorded';
-    else if (running) state = 'running';
-    return { exp, state, dispatch: recorded || running || null };
-  });
+  const runAction = async (op, label) => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await op();
+      showToast && showToast(label);
+      refresh();
+    } catch (e) {
+      setActionError(e.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading && !data) {
+    return (
+      <Page title="Loading wafer…">
+        <div style={{ padding: '60px 20px', textAlign: 'center', color: muted, fontSize: 14 }}>Loading…</div>
+      </Page>
+    );
+  }
+  if (error || !data) {
+    return (
+      <Page
+        breadcrumb={<Breadcrumb items={[
+          { label: 'Samples', onClick: () => navigate({ page: 'lab_samples' }) },
+          { label: '?' },
+        ]}/>}
+        title="Wafer not found"
+      >
+        <div style={{ padding: 24, color: '#c0394a', fontSize: 14 }}>
+          {error || 'This wafer is no longer available.'}
+        </div>
+      </Page>
+    );
+  }
+
+  const { sample: w, request, wip, experiments } = data;
+  const urgency = request?.urgency || '1w';
+
+  // Per-experiment rollup comes from /samples/:id/experiments. Join the
+  // lab_category from /experiment-types/ so each chip shows the RA/MA/FA/TM
+  // group badge (same shape Fab Request Detail uses).
+  const labCategoryById = new Map((expTypes || []).map(t => [t.id, t.labCategory]));
+  const expRows = (experiments || []).map(e => ({
+    id: e.experimentTypeId,
+    name: e.experimentName,
+    group: labCategoryById.get(e.experimentTypeId) || '',
+    status: e.status,
+    verdict: e.verdict,
+    dispatchId: e.dispatchId,
+    result: e.result,
+  }));
+  const doneCount = expRows.filter(r => r.status === 'done').length;
+
+  const onReceive = () => runAction(() => window.api.samples.receive(w.id), `${w.wafer} received`);
+  const onReject = () => runAction(() => window.api.samples.rejectReceiving(w.id, ''), `${w.wafer} rejected`);
 
   return (
     <Page
       breadcrumb={<Breadcrumb items={[
         { label: 'Samples', onClick: () => navigate({ page: 'lab_samples' }) },
-        { label: w.id },
+        { label: w.wafer },
       ]}/>}
-      title={w.id}
+      title={w.wafer}
       subtitle={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
         <span style={{ fontFamily: 'var(--font-mono)', color: muted }}>Request #{String(w.requestId).padStart(4,'0')}</span>
         <Pill kind={w.status}/>
-        <Pill kind={w.urgency}/>
+        <Pill kind={urgency}/>
       </span>}
       right={w.status === 'incoming' && (<>
-        <SecondaryBtn danger onClick={() => onReject(w.id)} icon={<LF.X size={14}/>}>Reject</SecondaryBtn>
-        <PrimaryBtn onClick={() => onReceive(w.id)} icon={<LF.Check size={14}/>}>Receive</PrimaryBtn>
+        <SecondaryBtn danger disabled={busy} onClick={onReject} icon={<LF.X size={14}/>}>{busy ? '…' : 'Reject'}</SecondaryBtn>
+        <PrimaryBtn disabled={busy} onClick={onReceive} icon={<LF.Check size={14}/>}>{busy ? '…' : 'Receive'}</PrimaryBtn>
       </>)}
     >
+      {actionError && (
+        <div style={{
+          padding: '12px 16px', marginBottom: 14, borderRadius: 10,
+          background: '#fde4e4', color: '#c0394a', fontSize: 13.5, fontWeight: 500,
+          border: '1px solid #f6c4c4',
+        }}>{actionError}</div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 18, alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           <Card padding={0}>
             <CardHeader>Wafer Info</CardHeader>
             <div style={{ padding: 22, display: 'grid', gridTemplateColumns: '120px 1fr', rowGap: 12 }}>
               <div style={{ fontSize: 13, color: text2 }}>Wafer ID</div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 700, color: ink }}>{w.id}</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 700, color: ink }}>{w.wafer}</div>
               <div style={{ fontSize: 13, color: text2 }}>Size</div>
               <div style={{ fontSize: 14, color: ink }}>{w.size}</div>
               <div style={{ fontSize: 13, color: text2 }}>From request</div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 14, color: ink }}>#{String(w.requestId).padStart(4,'0')}</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 14, color: ink }}>#{String(w.requestId).padStart(4,'0')}{request?.title ? ` — ${request.title}` : ''}</div>
               <div style={{ fontSize: 13, color: text2 }}>Urgency</div>
-              <div><Pill kind={w.urgency}/></div>
+              <div><Pill kind={urgency}/></div>
               <div style={{ fontSize: 13, color: text2 }}>Arrived at</div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 14, color: ink }}>{w.arrivedAt}</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 14, color: ink }}>{w.arrivedAt || '—'}</div>
               <div style={{ fontSize: 13, color: text2 }}>Status</div>
               <div><Pill kind={w.status}/></div>
-              {w.reason && <>
-                <div style={{ fontSize: 13, color: text2 }}>Reject reason</div>
-                <div style={{ fontSize: 14, color: ink }}>{w.reason}</div>
-              </>}
             </div>
           </Card>
 
@@ -1181,61 +1419,51 @@ const LabWaferDetail = ({ id, wafers, wips, dispatches, navigate, onReceive, onR
             <Card padding={0}>
               <CardHeader>
                 <span>Experiments</span>
-                <span style={{ marginLeft: 'auto', fontSize: 11, color: muted, fontWeight: 600 }}>
-                  {expRows.filter(r => r.state === 'recorded').length}/{expRows.length} done
+                <span style={{ marginLeft: 'auto', fontSize: 11, color: muted, fontWeight: 600, letterSpacing: '0.06em' }}>
+                  {doneCount}/{expRows.length} DONE
                 </span>
               </CardHeader>
-              <div>
-                {expRows.map(({ exp, state, dispatch }) => {
-                  const stateInfo = state === 'recorded'
-                    ? { bg: '#e7f0e9', fg: '#2e6a47', label: 'Done' }
-                    : state === 'running'
-                      ? { bg: '#ecebf3', fg: '#4f4a8f', label: 'In Progress' }
-                      : { bg: '#fef4dd', fg: '#a06618', label: 'Pending' };
+              <div style={{ padding: 18, display: 'flex', flexWrap: 'wrap', gap: 8, background: '#fafafd' }}>
+                {expRows.map(e => {
+                  const done    = e.status === 'done';
+                  const running = e.status === 'running';
+                  const pass    = done && e.verdict === 'pass';
+                  const fail    = done && e.verdict === 'fail';
+                  // Done+Pass = green check, Done+Fail = red X, Done+null
+                  // verdict = neutral green check (legacy or pending verdict).
+                  // Running = pulsing purple dot. Pending = grey dashed dot.
+                  // Clickable when there's a dispatch to drill into.
+                  const clickable = e.dispatchId != null;
+                  const bg     = fail ? '#fbe4e6' : done ? '#e7f6ec' : running ? '#ecebf3' : '#f4f4f7';
+                  const border = fail ? '#f4b4b9' : done ? '#9ad9b7' : running ? '#bcb8e2' : 'rgba(0,0,0,0.08)';
+                  const badgeBg = fail ? '#a93445' : done ? '#157a4a' : running ? '#4f4a8f' : '#cbcbd6';
+                  const textCol = fail ? '#5a1a22' : done ? '#1f3d2c' : running ? ink : '#7a7a8c';
                   return (
-                    <div key={exp.id} style={{
-                      padding: '14px 20px', borderTop: `1px solid ${lineSoft}`,
-                      display: 'flex', flexDirection: 'column', gap: 8,
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span style={{
-                          fontSize: 10.5, fontWeight: 700, padding: '3px 8px', borderRadius: 999,
-                          background: '#ecebf3', color: '#4f4a8f', letterSpacing: '0.05em',
-                        }}>{exp.code}</span>
-                        <span style={{ fontSize: 13.5, fontWeight: 600, color: ink, flex: 1 }}>{exp.name}</span>
-                        <span style={{
-                          padding: '3px 9px', borderRadius: 999,
-                          background: stateInfo.bg, color: stateInfo.fg,
-                          fontSize: 11.5, fontWeight: 700,
-                        }}>{stateInfo.label}</span>
-                      </div>
-                      {dispatch?.result && (
-                        <div style={{
-                          padding: '10px 12px', background: bgSoft,
-                          border: `1px solid ${lineSoft}`, borderRadius: 8,
-                          display: 'flex', flexDirection: 'column', gap: 6,
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Pill kind={dispatch.result.verdict}/>
-                            <span style={{ fontSize: 12, color: muted, fontFamily: 'var(--font-mono)' }}>{dispatch.id}</span>
-                            <button onClick={() => navigate({ page: 'lab_dispatch_detail', id: dispatch.id })} style={{
-                              marginLeft: 'auto', background: 'transparent', border: 'none', padding: 0,
-                              cursor: 'pointer', color: accent, fontWeight: 600, fontSize: 12, fontFamily: 'inherit',
-                            }}>Open dispatch \u2192</button>
-                          </div>
-                          <div style={{ fontSize: 13, color: ink, lineHeight: 1.5 }}>{dispatch.result.summary}</div>
-                          {dispatch.result.note && (
-                            <div style={{ fontSize: 12.5, color: text2, fontStyle: 'italic' }}>{dispatch.result.note}</div>
-                          )}
-                        </div>
-                      )}
-                      {state === 'running' && dispatch && (
-                        <div style={{ fontSize: 12.5, color: text2, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ width: 6, height: 6, borderRadius: 999, background: '#4f4a8f', animation: 'pulse 1.4s infinite' }}/>
-                          Running on <strong style={{ color: ink, fontFamily: 'var(--font-mono)' }}>{dispatch.equipmentId}</strong> \u00b7 dispatch {dispatch.id}
-                        </div>
-                      )}
-                    </div>
+                    <button
+                      key={e.id}
+                      type="button"
+                      disabled={!clickable}
+                      onClick={() => clickable && navigate({ page: 'lab_dispatch_detail', id: e.dispatchId })}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 7,
+                        padding: '6px 12px 6px 7px', borderRadius: 999,
+                        background: bg, border: `1px solid ${border}`,
+                        fontFamily: 'inherit', cursor: clickable ? 'pointer' : 'default',
+                      }}
+                    >
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, padding: '3px 7px', borderRadius: 999,
+                        background: badgeBg, color: '#fff', letterSpacing: '0.05em',
+                      }}>{e.group || '\u2014'}</span>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: textCol }}>{e.name}</span>
+                      {fail
+                        ? <LF.X size={13} color="#a93445" strokeWidth={3}/>
+                        : done
+                          ? <LF.Check size={13} color="#157a4a" strokeWidth={3}/>
+                          : running
+                            ? <span style={{ width: 9, height: 9, borderRadius: 999, background: '#4f4a8f', animation: 'pulse 1.4s infinite' }}/>
+                            : <span style={{ width: 13, height: 13, borderRadius: 999, border: '1.5px dashed #cbcbd6' }}/>}
+                    </button>
                   );
                 })}
               </div>
@@ -1251,9 +1479,9 @@ const LabWaferDetail = ({ id, wafers, wips, dispatches, navigate, onReceive, onR
                 display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center',
               }}>
                 <div>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 700, color: ink }}>{wip.id}</div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 700, color: ink }}>{wip.code}</div>
                   <div style={{ fontSize: 12.5, color: text2, marginTop: 4 }}>
-                    {findExp(wip.experimentId)?.name}{wip.equipmentId ? ` → ${wip.equipmentId}` : ''}
+                    {wip.experimentName || '—'}
                   </div>
                 </div>
                 <Pill kind={wip.status}/>
@@ -1268,8 +1496,8 @@ const LabWaferDetail = ({ id, wafers, wips, dispatches, navigate, onReceive, onR
                       background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
                       fontFamily: 'inherit',
                     }}>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, color: text2 }}>{d.id}</span>
-                      <span style={{ fontSize: 13, color: ink }}>{findExp(d.experimentId)?.name}</span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, color: text2 }}>{d.code}</span>
+                      <span style={{ fontSize: 13, color: ink }}>{d.experimentName || '—'}</span>
                       <Pill kind={d.status}/>
                     </button>
                   ))}
@@ -1287,7 +1515,16 @@ const LabWaferDetail = ({ id, wafers, wips, dispatches, navigate, onReceive, onR
             { k: 'in_wip',    l: 'Processing' },
             { k: 'completed', l: 'Experiment(s) done' },
           ].map((s, i, arr) => {
-            const order = { incoming: 0, received: 1, in_wip: 2, completed: 3, rejected: 1 };
+            const order = {
+              incoming:   0,
+              received:   1,
+              in_wip:     2,
+              processing: 2,
+              completed:  3,
+              rejected:   1,
+              cancelled:  1,
+              returned:   1,
+            };
             const cur = order[w.status] ?? 0;
             const reached = i <= cur && w.status !== 'rejected';
             return (
@@ -1307,7 +1544,7 @@ const LabWaferDetail = ({ id, wafers, wips, dispatches, navigate, onReceive, onR
           })}
           {w.status === 'rejected' && (
             <div style={{ marginTop: 8, padding: 10, borderRadius: 8, background: '#fbe4e6', color: '#a93445', fontSize: 12.5 }}>
-              <strong>Rejected.</strong> {w.reason}
+              <strong>Rejected.</strong> Status set during receiving; see request detail for the reason.
             </div>
           )}
         </Card>
@@ -1321,10 +1558,13 @@ const LabWipList = ({ navigate, showToast }) => {
   const { wips, loading, error, refresh } = useLabWips();
   const [tab, setTab] = lS('active');
   const [modalOpen, setModalOpen] = lS(false);
+  // Active = anything not yet terminal (created + in_progress).
+  // Completed = terminal states (completed + aborted).
+  const isWipActive = (w) => w.status !== 'completed' && w.status !== 'aborted';
   const filtered = tab === 'active'
-    ? wips.filter(w => w.status === 'in_progress')
+    ? wips.filter(isWipActive)
     : tab === 'completed'
-      ? wips.filter(w => w.status !== 'in_progress')
+      ? wips.filter(w => !isWipActive(w))
       : wips;
 
   const openModal = () => setModalOpen(true);
@@ -1363,8 +1603,8 @@ const LabWipList = ({ navigate, showToast }) => {
       )}
       <div style={{ display: 'flex', gap: 4, marginBottom: 14, borderBottom: `1px solid ${line}` }}>
         {[
-          { id: 'active',    label: 'Active',    n: wips.filter(w => w.status === 'in_progress').length },
-          { id: 'completed', label: 'Completed', n: wips.filter(w => w.status !== 'in_progress').length },
+          { id: 'active',    label: 'Active',    n: wips.filter(isWipActive).length },
+          { id: 'completed', label: 'Completed', n: wips.filter(w => !isWipActive(w)).length },
           { id: 'all',       label: 'All',       n: wips.length },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
@@ -1549,7 +1789,11 @@ const WipCreationModalInner = ({ onClose, onSaved }) => {
             onChange={(e) => setExperimentTypeId(e.target.value ? Number(e.target.value) : '')}
           >
             <option value="">— pick an experiment type —</option>
-            {experimentTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            {experimentTypes.map(t => (
+              <option key={t.id} value={t.id}>
+                {t.labCategory ? `${t.name} (${t.labCategory})` : t.name}
+              </option>
+            ))}
           </SelectInput>
         </div>
         <div>
@@ -1628,11 +1872,8 @@ const LabWipDetail = ({ id, navigate, showToast }) => {
       setBusy(false);
     }
   };
-  const onComplete = () => {
-    if (!w) return;
-    if (!window.confirm(`Mark ${w.code} as complete? Active dispatches must already be in a terminal state.`)) return;
-    runAction(() => window.api.wips.complete(w.id), `${w.code} completed`);
-  };
+  // Backend auto-completes the parent WIP when its last dispatch is
+  // closed, so the UI no longer offers a manual "Complete WIP" button.
   const onAbort = () => {
     if (!w) return;
     if (!window.confirm(`Abort ${w.code}? This cannot be undone.`)) return;
@@ -1672,7 +1913,10 @@ const LabWipDetail = ({ id, navigate, showToast }) => {
   // The experiment-type chip uses initials when no local string-slug match
   // exists (live ids are integers; the EXPERIMENTS catalogue is string-keyed).
   const expCode = (findExp(w.experimentId)?.code) || (w.experimentName ? w.experimentName.split(/\s+/).map(t => t[0]).join('').slice(0, 4).toUpperCase() : '—');
-  const isActive = w.status === 'in_progress';
+  const isActive = w.status !== 'completed' && w.status !== 'aborted';
+  // Only one active dispatch per WIP at a time — gate "Create Dispatch"
+  // on there being no open one (anything not yet completed/aborted).
+  const hasActiveDispatch = w.dispatches.some(d => d.status !== 'completed' && d.status !== 'aborted');
 
   return (
     <Page
@@ -1698,10 +1942,11 @@ const LabWipDetail = ({ id, navigate, showToast }) => {
         <span style={{ color: muted, fontSize: 13 }}>· {w.sampleCount} sample{w.sampleCount === 1 ? '' : 's'}</span>
         {w.created && <span style={{ color: muted, fontSize: 13 }}>· created {w.created.split(' ')[0]}</span>}
       </span>}
-      right={isActive && <>
-        <SecondaryBtn danger onClick={onAbort} disabled={busy}>{busy ? '…' : 'Abort'}</SecondaryBtn>
-        <PrimaryBtn success onClick={onComplete} disabled={busy} icon={<LF.Check size={14}/>}>{busy ? 'Working…' : 'Complete WIP'}</PrimaryBtn>
-      </>}
+      right={isActive && (hasActiveDispatch ? (
+        <SecondaryBtn danger onClick={onAbort} disabled={busy}>{busy ? '…' : 'Abort WIP'}</SecondaryBtn>
+      ) : (
+        <PrimaryBtn icon={<LF.Plus size={14}/>} onClick={onAddDispatch} disabled={busy}>Create Dispatch</PrimaryBtn>
+      ))}
     >
       {actionError && (
         <div style={{
@@ -1722,7 +1967,7 @@ const LabWipDetail = ({ id, navigate, showToast }) => {
             </CardHeader>
             {w.dispatches.length === 0 ? (
               <div style={{ padding: '28px 20px', textAlign: 'center', color: muted, fontSize: 13 }}>
-                No dispatches yet{isActive ? ' — use Add Dispatch above to create one' : ''}
+                No dispatches yet{isActive && !hasActiveDispatch ? ' — use Create Dispatch above to start one' : ''}
               </div>
             ) : (
               <>
@@ -1754,18 +1999,6 @@ const LabWipDetail = ({ id, navigate, showToast }) => {
               </>
             )}
           </Card>
-
-          {isActive && (
-            <Card padding={22} style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 11.5, color: muted, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
-                Add Dispatch
-              </div>
-              <div style={{ fontSize: 13, color: text2, marginBottom: 14 }}>
-                Pick equipment + recipe to spin up a new dispatch on this WIP.
-              </div>
-              <PrimaryBtn icon={<LF.Plus size={14}/>} onClick={onAddDispatch}>Add Dispatch</PrimaryBtn>
-            </Card>
-          )}
 
           {w.note && (
             <Card padding={0}>
@@ -1973,20 +2206,26 @@ const AddDispatchModalInner = ({ onClose, wip, onCreated }) => {
 
         <div>
           <FieldLabel>Estimated duration (seconds)</FieldLabel>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <TextInput
-              type="number" min="1"
-              placeholder="e.g., 3600 (= 1 hour), 86400 (= 1 day)"
-              value={duration}
-              onChange={(e) => setDuration(e.target.value)}
-              style={{ flex: 1 }}
-            />
-            <button type="button" onClick={() => setDuration('20')} style={{
-              padding: '8px 12px', borderRadius: 999,
-              background: '#f5f5fa', color: accent, border: `1px solid ${line}`,
-              fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-              whiteSpace: 'nowrap',
-            }}>20s — demo</button>
+          <TextInput
+            type="number" min="1"
+            placeholder="Seconds — leave blank if unknown"
+            value={duration}
+            onChange={(e) => setDuration(e.target.value)}
+          />
+          <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+            {[
+              { label: '20s', value: '20' },
+              { label: '1m',  value: '60' },
+              { label: '1h',  value: '3600' },
+              { label: '1d',  value: '86400' },
+            ].map(preset => (
+              <button key={preset.value} type="button" onClick={() => setDuration(preset.value)} style={{
+                padding: '6px 12px', borderRadius: 999,
+                background: duration === preset.value ? '#ecebf3' : '#f5f5fa',
+                color: accent, border: `1px solid ${duration === preset.value ? '#bcb8e2' : line}`,
+                fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+              }}>{preset.label}</button>
+            ))}
           </div>
           <div style={{ fontSize: 12, color: muted, marginTop: 6 }}>
             Leave blank if unknown. The countdown bar will show — if not set.
@@ -2009,12 +2248,23 @@ const LabDispatchList = ({ navigate, defaultTab = 'active' }) => {
   const groups = {
     active: ['dispatched', 'pending', 'running'],
     record: ['unloaded', 'exception'],
-    done:   ['result_recorded', 'aborted'],
+    done:   ['completed', 'aborted'],
     all:    null,
   };
   const filtered = groups[tab] === null
     ? dispatches
     : dispatches.filter(d => groups[tab].includes(d.status));
+  // 1Hz tick so the per-row running countdown advances visibly. Same
+  // pattern as LabDispatchDetail — only mount the interval when there's
+  // a running row in the current view, and clear it as soon as there
+  // isn't (avoids churn on the Closed tab and stale dashboards).
+  const [, setTick] = lS(0);
+  const hasRunning = filtered.some(d => d.status === 'running');
+  React.useEffect(() => {
+    if (!hasRunning) return;
+    const h = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(h);
+  }, [hasRunning]);
 
   const tabs = [
     { id: 'active', label: 'Active' },
@@ -2166,10 +2416,13 @@ const LabDispatchList = ({ navigate, defaultTab = 'active' }) => {
 };
 
 // ── Dispatch detail ─────────────────────────────────────────────
-const STATUS_FLOW = ['dispatched', 'pending', 'running', 'unloaded', 'result_recorded'];
+// Lifecycle order. record_result on the backend now writes the result
+// AND flips the dispatch straight to `completed` — there's no
+// `result_recorded` intermediate state any more.
+const STATUS_FLOW = ['dispatched', 'pending', 'running', 'unloaded', 'completed'];
 
 const LabDispatchDetail = ({ id, navigate, showToast }) => {
-  const { dispatch: d, loading, error, refresh } = useLabDispatchDetail(id);
+  const { dispatch: d, waferResults, loading, error, refresh } = useLabDispatchDetail(id);
   // 1Hz tick to drive the countdown re-render while the dispatch is
   // running. Mounts the timer only when needed so we don't churn on
   // closed dispatches.
@@ -2224,15 +2477,18 @@ const LabDispatchDetail = ({ id, navigate, showToast }) => {
     );
   }
 
-  // For the lifecycle stepper. The status-mapped value lives in d.status
-  // (FE-normalized); some FE-mapped statuses come from multiple backend
-  // states (e.g. `exception` covers `execution_exception` + `pending_redispatch`).
-  const stepIdx = STATUS_FLOW.indexOf(d.status);
-  const isClosed = d.status === 'aborted' || d.status === 'exception' || d.status === 'result_recorded';
+  // For the lifecycle stepper. Backend's record_result now closes the
+  // dispatch straight to `completed` — there's no result_recorded
+  // intermediate state. `exception` is still its own non-terminal
+  // failure mode (the FE collapses multiple backend exception states).
+  const isFailed = d.status === 'aborted' || d.status === 'exception';
+  const isDone   = d.status === 'completed';
+  const stepIdx  = isDone ? STATUS_FLOW.length - 1 : STATUS_FLOW.indexOf(d.status);
 
   // Action surface depends on status. Each button confirms, hits the API,
   // refetches, and shows a toast. `record-result` opens the existing modal
-  // which itself calls api.dispatches.recordResult.
+  // which itself calls api.dispatches.recordResult; once recorded the
+  // dispatch is `completed` and there are no further actions.
   let actions = null;
   if (d.status === 'dispatched' || d.status === 'pending') actions = <>
     <SecondaryBtn danger disabled={busy} onClick={() => confirmThen(`Abort ${d.code}?`, () => window.api.dispatches.abort(d.id), `${d.code} aborted`)}>Abort</SecondaryBtn>
@@ -2244,10 +2500,6 @@ const LabDispatchDetail = ({ id, navigate, showToast }) => {
   </>;
   else if (d.status === 'unloaded' || d.status === 'exception') actions = <>
     <PrimaryBtn icon={<LF.ClipboardList size={14}/>} disabled={busy} onClick={() => setRecordOpen(true)}>Record Result</PrimaryBtn>
-  </>;
-  else if (d.status === 'result_recorded') actions = <>
-    <SecondaryBtn disabled={busy} onClick={() => confirmThen(`Re-dispatch ${d.code}? A new dispatch will be created.`, () => window.api.dispatches.redispatch(d.id), `${d.code} re-dispatched`)}>Redispatch</SecondaryBtn>
-    <PrimaryBtn icon={<LF.Check size={14}/>} success disabled={busy} onClick={() => confirmThen(`Complete ${d.code}?`, () => window.api.dispatches.complete(d.id), `${d.code} completed`)}>{busy ? '…' : 'Complete'}</PrimaryBtn>
   </>;
 
   const wipCode = `WIP-${String(d.wipId).padStart(4, '0')}`;
@@ -2281,9 +2533,12 @@ const LabDispatchDetail = ({ id, navigate, showToast }) => {
         <CardHeader>Lifecycle</CardHeader>
         <div style={{ padding: '22px 26px', display: 'flex', alignItems: 'center', gap: 0 }}>
           {STATUS_FLOW.map((s, i) => {
-            const done = !isClosed && i < stepIdx;
-            const cur  = !isClosed && i === stepIdx;
-            const fail = isClosed && (d.status === 'aborted' || d.status === 'exception') && i > stepIdx;
+            // `completed` lights up every dot; otherwise i < stepIdx are
+            // done, i === stepIdx is current. Failed states (aborted /
+            // exception) hold the line at whichever stage they fired
+            // from — no further dots illuminate.
+            const done = isDone ? i <= stepIdx : (!isFailed && i < stepIdx);
+            const cur  = !isDone && !isFailed && i === stepIdx;
             const reachedColor = done ? accent : cur ? accent : '#dcdce3';
             return (
               <React.Fragment key={s}>
@@ -2403,29 +2658,66 @@ const LabDispatchDetail = ({ id, navigate, showToast }) => {
             </div>
           </Card>
 
-          {d.result && (
+          {(d.result || waferResults.length > 0) && (
             <Card padding={0}>
               <CardHeader>
                 <span>Recorded Result</span>
-                <span style={{ marginLeft: 'auto' }}><Pill kind={d.result.verdict}/></span>
+                {d.result?.recordedAt && (
+                  <span style={{ marginLeft: 'auto', fontSize: 11.5, color: muted, fontFamily: 'var(--font-mono)' }}>
+                    {d.result.recordedAt}
+                  </span>
+                )}
               </CardHeader>
-              <div style={{ padding: 22, display: 'grid', gridTemplateColumns: '140px 1fr', rowGap: 12 }}>
-                <div style={{ fontSize: 13, color: text2 }}>Summary</div>
-                <div style={{ fontSize: 14, color: ink, lineHeight: 1.55 }}>{d.result.summary}</div>
-                <div style={{ fontSize: 13, color: text2 }}>Data</div>
-                <div style={{
-                  fontFamily: 'var(--font-mono)', fontSize: 12, color: text2,
-                  background: bgSoft, padding: '10px 12px', borderRadius: 8, lineHeight: 1.5,
-                  whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-                }}>
-                  {d.result.data && Object.keys(d.result.data).length > 0
-                    ? JSON.stringify(d.result.data, null, 2)
-                    : '—'}
+              <div style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div>
+                  <div style={{ fontSize: 11.5, color: text2, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>
+                    Comment
+                  </div>
+                  <div style={{ fontSize: 14, color: ink, lineHeight: 1.55 }}>
+                    {d.result?.comment ? d.result.comment : <span style={{ color: muted, fontStyle: 'italic' }}>No comment recorded.</span>}
+                  </div>
                 </div>
-                {d.result.source && <>
-                  <div style={{ fontSize: 13, color: text2 }}>Source</div>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: ink }}>{d.result.source}</div>
-                </>}
+                {waferResults.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 11.5, color: text2, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+                      Per-Wafer Results ({waferResults.length})
+                    </div>
+                    <div style={{
+                      border: `1px solid ${lineSoft}`, borderRadius: 8, overflow: 'hidden',
+                    }}>
+                      <div style={{
+                        display: 'grid', gridTemplateColumns: '1fr 90px 110px',
+                        background: bgSoft, padding: '8px 14px',
+                        fontSize: 11, fontWeight: 700, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em',
+                      }}>
+                        <div>Wafer</div><div>Size</div><div style={{ textAlign: 'right' }}>Verdict</div>
+                      </div>
+                      {waferResults.map(w => {
+                        const v = w.verdict;
+                        const pillBg = v === 'pass' ? '#e7f0e9' : v === 'fail' ? '#fbe4e6' : '#f1f1f5';
+                        const pillFg = v === 'pass' ? '#2e6a47' : v === 'fail' ? '#a93445' : muted;
+                        const pillLabel = v === 'pass' ? '✓ Pass' : v === 'fail' ? '✗ Fail' : '—';
+                        return (
+                          <div key={w.sampleId} style={{
+                            display: 'grid', gridTemplateColumns: '1fr 90px 110px',
+                            alignItems: 'center', gap: 8,
+                            padding: '12px 14px', borderTop: `1px solid ${lineSoft}`,
+                          }}>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700, color: ink }}>{w.wafer}</span>
+                            <span style={{ fontSize: 12.5, color: text2 }}>{w.size}</span>
+                            <span style={{ textAlign: 'right' }}>
+                              <span style={{
+                                display: 'inline-block', padding: '3px 10px', borderRadius: 999,
+                                background: pillBg, color: pillFg,
+                                fontSize: 11.5, fontWeight: 700,
+                              }}>{pillLabel}</span>
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </Card>
           )}
@@ -2448,6 +2740,7 @@ const LabDispatchDetail = ({ id, navigate, showToast }) => {
         open={recordOpen}
         onClose={() => setRecordOpen(false)}
         dispatch={d}
+        waferResults={waferResults}
         onSubmit={async (payload) => {
           setRecordOpen(false);
           await runAction(
@@ -2460,16 +2753,17 @@ const LabDispatchDetail = ({ id, navigate, showToast }) => {
   );
 };
 
-// ── Record Result modal (screenshot 2) ──────────────────────────
-const RecordResultModal = ({ open, onClose, dispatch, onSubmit }) => {
-  const [summary, setSummary] = lS('');
-  const [verdict, setVerdict] = lS('');
-  const [data, setData] = lS('{}');
-  const [note, setNote] = lS('');
-  const valid = summary.trim().length > 0 && (verdict === 'pass' || verdict === 'fail');
+// ── Record Result modal ─────────────────────────────────────────
+// Backend rolls per-wafer verdicts at unload time, so by the time
+// this modal opens (Record Result → Unloaded → record_result) the
+// verdicts are already populated. We surface them as a read-only
+// preview alongside the comment textarea — submit still posts
+// { comment }-only.
+const RecordResultModal = ({ open, onClose, dispatch, waferResults = [], onSubmit }) => {
+  const [comment, setComment] = lS('');
 
   React.useEffect(() => {
-    if (open) { setSummary(''); setVerdict(''); setData('{}'); setNote(''); }
+    if (open) setComment('');
   }, [open]);
 
   return (
@@ -2480,32 +2774,49 @@ const RecordResultModal = ({ open, onClose, dispatch, onSubmit }) => {
       width={560}
       footer={<>
         <SecondaryBtn onClick={onClose}>Cancel</SecondaryBtn>
-        <PrimaryBtn disabled={!valid} onClick={() => onSubmit({ summary, verdict, data, note })}>Submit Result</PrimaryBtn>
+        <PrimaryBtn onClick={() => onSubmit({ comment: comment.trim() })}>Submit Result</PrimaryBtn>
       </>}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div>
-          <FieldLabel required>Summary</FieldLabel>
-          <TextArea placeholder="Outcome in one or two sentences" value={summary} onChange={(e) => setSummary(e.target.value)}/>
-        </div>
-        <div>
-          <FieldLabel required>Verdict</FieldLabel>
-          <div style={{ display: 'flex', gap: 18 }}>
-            {['pass', 'fail'].map(v => (
-              <label key={v} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 14, fontWeight: 600, color: v === 'pass' ? '#2e6a47' : '#a93445' }}>
-                <input type="radio" name="verdict" value={v} checked={verdict === v} onChange={() => setVerdict(v)} style={{ accentColor: v === 'pass' ? '#2e6a47' : '#a93445' }}/>
-                {v === 'pass' ? 'Pass' : 'Fail'}
-              </label>
-            ))}
+        {waferResults.length > 0 && (
+          <div>
+            <FieldLabel>Per-Wafer Results</FieldLabel>
+            <div style={{
+              border: `1px solid ${lineSoft}`, borderRadius: 8, overflow: 'hidden',
+            }}>
+              {waferResults.map(w => {
+                const v = w.verdict;
+                const pillBg = v === 'pass' ? '#e7f0e9' : v === 'fail' ? '#fbe4e6' : '#f1f1f5';
+                const pillFg = v === 'pass' ? '#2e6a47' : v === 'fail' ? '#a93445' : muted;
+                const pillLabel = v === 'pass' ? '✓ Pass' : v === 'fail' ? '✗ Fail' : '—';
+                return (
+                  <div key={w.sampleId} style={{
+                    display: 'grid', gridTemplateColumns: '1fr auto',
+                    alignItems: 'center', gap: 10,
+                    padding: '10px 14px', borderTop: `1px solid ${lineSoft}`,
+                  }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700, color: ink }}>{w.wafer}</span>
+                    <span style={{
+                      padding: '3px 10px', borderRadius: 999,
+                      background: pillBg, color: pillFg,
+                      fontSize: 11.5, fontWeight: 700,
+                    }}>{pillLabel}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
         <div>
-          <FieldLabel>Data (JSON, optional)</FieldLabel>
-          <TextArea value={data} onChange={(e) => setData(e.target.value)} style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5 }}/>
-        </div>
-        <div>
-          <FieldLabel>Note</FieldLabel>
-          <TextInput value={note} onChange={(e) => setNote(e.target.value)}/>
+          <FieldLabel>Comment</FieldLabel>
+          <TextArea
+            placeholder="Observations from the run (optional)"
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+          />
+          <div style={{ fontSize: 12, color: muted, marginTop: 6 }}>
+            Per-wafer pass/fail is determined automatically — this is just for operator notes.
+          </div>
         </div>
       </div>
     </Modal>
@@ -3090,104 +3401,25 @@ const NewEquipmentModal = ({ open, onClose, onSubmit, existingIds }) => {
 
 // ── Root container ───────────────────────────────────────────────
 const LabApp = ({ route, navigate, canManage = false }) => {
-  const [wafers, setWafers] = lS(WAFER_SEED);
-  const [wips, setWips] = lS(WIP_SEED);
-  const [dispatches, setDispatches] = lS(DISPATCH_SEED);
-  const [equipment, setEquipment] = lS(EQUIPMENT_SEED);
+  // All Lab pages now own their own data via dedicated hooks
+  // (useLabSamples, useLabWipDetail, useLabDispatches, useLabEquipment,
+  // useLabDashboardData, useWaferDetail). LabApp's only responsibility is
+  // routing + showing the page-level toast. The seed `*_SEED` constants
+  // up top stay around for the offline single-file build.
   const [toast, setToast] = lS(null);
-  // Legacy NewWipModal open-state is gone; WIP creation lives inside
-  // LabWipList (WipCreationModal) and posts to the live API directly.
-
   const showToast = (msg) => {
     setToast({ msg, t: Date.now() });
     setTimeout(() => setToast(null), 2200);
-  };
-  const now = () => new Date().toISOString().slice(0, 16).replace('T', ' ');
-  const nextId = (prefix, list) => {
-    const max = list.reduce((m, x) => {
-      const n = parseInt(String(x.id).replace(prefix, ''), 10);
-      return Number.isFinite(n) ? Math.max(m, n) : m;
-    }, 0);
-    return `${prefix}${max + 1}`;
-  };
-
-  const onReceive = (id) => {
-    setWafers(ws => ws.map(w => w.id === id ? { ...w, status: 'received' } : w));
-    showToast(`${id} received`);
-  };
-  const onReject = (id) => {
-    setWafers(ws => ws.map(w => w.id === id ? { ...w, status: 'rejected', reason: 'Manual reject' } : w));
-    showToast(`${id} rejected`);
-  };
-
-  // Legacy seed-based createWip removed — WipCreationModal posts to
-  // /wips/ directly and triggers a list refetch.
-
-  const onCompleteWip = (id) => {
-    const wip = findWip(id, wips);
-    if (!wip) return;
-    setWips(ws => ws.map(w => w.id === id ? { ...w, status: 'completed' } : w));
-    setWafers(ws => ws.map(w => wip.waferIds.includes(w.id) ? { ...w, status: 'completed', wipId: null } : w));
-    setEquipment(es => es.map(e => e.currentWipId === id ? { ...e, currentWipId: null } : e));
-    showToast(`${id} completed`);
-  };
-  const onAbortWip = (id) => {
-    const wip = findWip(id, wips);
-    if (!wip) return;
-    setWips(ws => ws.map(w => w.id === id ? { ...w, status: 'aborted' } : w));
-    setWafers(ws => ws.map(w => wip.waferIds.includes(w.id) ? { ...w, status: 'received', wipId: null } : w));
-    setEquipment(es => es.map(e => e.currentWipId === id ? { ...e, currentWipId: null } : e));
-    showToast(`${id} aborted`);
-  };
-
-  // Manager equipment create/edit now lives in the live EquipmentModal
-  // (lab.jsx). LabApp no longer owns that flow.
-
-  const createDispatch = (wipId, { experimentId, equipmentId, recipeId }) => {
-    const id = nextId('DP-', dispatches);
-    const dp = { id, wipId, experimentId, equipmentId, recipeId, operator: 'lab_member', status: 'dispatched', dispatchedAt: now(), startedAt: null, endedAt: null, result: null };
-    setDispatches(ds => [dp, ...ds]);
-    setWips(ws => ws.map(w => w.id === wipId ? {
-      ...w,
-      dispatchIds: [...w.dispatchIds, id],
-      // Lock in the equipment on the first dispatch — keeps the WIP's primary
-      // equipment tag in sync without overwriting if another dispatch chose differently.
-      equipmentId: w.equipmentId || equipmentId,
-    } : w));
-    setEquipment(es => es.map(e => e.id === equipmentId ? { ...e, currentWipId: wipId } : e));
-    showToast(`${id} dispatched`);
-  };
-  const advanceDispatch = (id, to) => {
-    setDispatches(ds => ds.map(d => {
-      if (d.id !== id) return d;
-      const u = { ...d, status: to };
-      if (to === 'running' && !u.startedAt) u.startedAt = now();
-      if (to === 'unloaded') u.endedAt = now();
-      return u;
-    }));
-    showToast(`${id} → ${PILL[to].label}`);
-  };
-  const abortDispatch = (id) => {
-    setDispatches(ds => ds.map(d => d.id === id ? { ...d, status: 'aborted', endedAt: now() } : d));
-    showToast(`${id} aborted`);
-  };
-  const exceptionDispatch = (id) => {
-    setDispatches(ds => ds.map(d => d.id === id ? { ...d, status: 'exception', endedAt: now() } : d));
-    showToast(`${id} flagged exception`);
-  };
-  const recordResult = (id, payload) => {
-    setDispatches(ds => ds.map(d => d.id === id ? { ...d, status: 'result_recorded', result: { ...payload, recordedAt: now() } } : d));
-    showToast(`${id} result recorded`);
   };
 
   let page = null;
   const p = route.page;
   if (p === 'lab_dashboard' || p === 'dashboard')
-    page = <LabDashboard wafers={wafers} wips={wips} dispatches={dispatches} equipment={equipment} navigate={navigate}/>;
+    page = <LabDashboard navigate={navigate}/>;
   else if (p === 'lab_samples' || p === 'samples')
     page = <LabSamples navigate={navigate} defaultTab={route.tab || 'all'} showToast={showToast}/>;
   else if (p === 'lab_wafer')
-    page = <LabWaferDetail id={route.id} wafers={wafers} wips={wips} dispatches={dispatches} navigate={navigate} onReceive={onReceive} onReject={onReject}/>;
+    page = <LabWaferDetail id={route.id} navigate={navigate} showToast={showToast}/>;
   else if (p === 'lab_wip' || p === 'wip')
     page = <LabWipList navigate={navigate} showToast={showToast}/>;
   else if (p === 'lab_wip_detail')
@@ -3199,7 +3431,7 @@ const LabApp = ({ route, navigate, canManage = false }) => {
   else if (p === 'lab_equipment' || p === 'equipment')
     page = <LabEquipment navigate={navigate} canManage={canManage} showToast={showToast}/>;
   else
-    page = <LabDashboard wafers={wafers} wips={wips} dispatches={dispatches} equipment={equipment} navigate={navigate}/>;
+    page = <LabDashboard navigate={navigate}/>;
 
   return (
     <>
