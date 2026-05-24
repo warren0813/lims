@@ -23,7 +23,7 @@ COPY . .
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
-RUN chmod +x /app/docker-start.sh
+RUN sed -i 's/\r$//' /app/docker-start.sh && chmod +x /app/docker-start.sh
 
 RUN DJANGO_SECRET_KEY=build-only-key \
     DEBUG=False \
