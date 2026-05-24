@@ -586,6 +586,9 @@
       async close(id) {
         return normalizeRequestDetail(await call(`/requests/${id}/close`, { method: 'POST' }));
       },
+      async deleteDraft(id) {
+        await call(`/requests/${id}`, { method: 'DELETE' });
+      },
     },
 
     samples: {

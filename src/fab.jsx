@@ -1011,11 +1011,12 @@ const TABS = [
 ];
 
 const FabRequestList = ({ navigate, initialTab = 'all', titleOverride, drafts = false }) => {
-  const { data: requests, loading, error } = useRequests();
+  const { data: requests, loading, error, refresh } = useRequests();
   const [tab, setTab] = uS(initialTab);
   const [search, setSearch] = uS('');
   const [urgency, setUrgency] = uS('all');
   const [sort, setSort] = uS('newest');
+  const [deletingId, setDeletingId] = uS(null);
 
   const counts = uM(() => Object.fromEntries(TABS.map(t => [t.id, requests.filter(t.filter).length])), [requests]);
   const baseList = drafts ? requests.filter(r => r.status === 'draft') : requests;
@@ -1037,6 +1038,15 @@ const FabRequestList = ({ navigate, initialTab = 'all', titleOverride, drafts = 
   const onRowClick = (r) => navigate(
     drafts ? { page: 'fab_draft_edit', id: r.id } : { page: 'fab_request', id: r.id }
   );
+
+  const handleDeleteDraft = (r) => {
+    if (!window.confirm(`Delete draft "${r.title || 'Untitled draft'}"? This cannot be undone.`)) return;
+    setDeletingId(r.id);
+    window.api.requests.deleteDraft(r.id)
+      .then(() => refresh())
+      .catch(err => window.alert('Failed to delete draft: ' + (err.message || String(err))))
+      .finally(() => setDeletingId(null));
+  };
 
   if (loading && requests.length === 0) {
     return (
@@ -1190,12 +1200,32 @@ const FabRequestList = ({ navigate, initialTab = 'all', titleOverride, drafts = 
                 <span>{(r.sampleCount ?? r.samples.length)} wafer{(r.sampleCount ?? r.samples.length) === 1 ? '' : 's'}</span>
               </div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-              {drafts
-                ? <span style={{ fontSize: 12.5, fontWeight: 600, color: '#6c67b8', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: 10 }}>
+              {drafts ? (
+                <>
+                  <span style={{ fontSize: 12.5, fontWeight: 600, color: '#6c67b8', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     <F.FilePlus size={13}/> Continue editing
                   </span>
-                : <RequestFlow request={r}/>}
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    title="Delete draft"
+                    onClick={(e) => { e.stopPropagation(); handleDeleteDraft(r); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); handleDeleteDraft(r); } }}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', padding: '4px 5px',
+                      borderRadius: 6, cursor: deletingId === r.id ? 'default' : 'pointer',
+                      color: deletingId === r.id ? '#bbb' : '#c0394a',
+                      transition: 'background 0.12s',
+                      pointerEvents: deletingId === r.id ? 'none' : 'auto',
+                    }}
+                    onMouseEnter={(e) => { if (deletingId !== r.id) e.currentTarget.style.background = '#fde4e4'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <F.Trash size={13}/>
+                  </span>
+                </>
+              ) : <RequestFlow request={r}/>}
             </div>
             {!drafts && (
               <div style={{ display: 'flex', justifyContent: 'flex-start' }}>

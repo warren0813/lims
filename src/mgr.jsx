@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
 // Lab Manager (實驗室主管) — management surfaces stacked on top of lab pages.
 // Provides three management routes:
 //   mgr_all_requests   — every fab request, with approve / return / reject controls
@@ -458,8 +458,9 @@ const findExpById = (id) => MGR_EXPERIMENTS.find(e => e.id === id);
 const MgrAllRequests = ({ navigate }) => {
   const { data: requests, loading, error } = useMgrRequests();
   const [tab, setTab] = mS('pending');
-  const counts = mM(() => Object.fromEntries(ALL_REQ_TABS.map(t => [t.id, requests.filter(t.filter).length])), [requests]);
-  const list = requests.filter(ALL_REQ_TABS.find(t => t.id === tab)?.filter || (() => true));
+  const nonDraftRequests = mM(() => requests.filter(r => r.status !== 'draft'), [requests]);
+  const counts = mM(() => Object.fromEntries(ALL_REQ_TABS.map(t => [t.id, nonDraftRequests.filter(t.filter).length])), [nonDraftRequests]);
+  const list = nonDraftRequests.filter(ALL_REQ_TABS.find(t => t.id === tab)?.filter || (() => true));
 
   if (loading && requests.length === 0) {
     return (
@@ -511,7 +512,7 @@ const MgrAllRequests = ({ navigate }) => {
       </div>
 
       <div style={{ fontSize: 13, color: mMuted, marginBottom: 14 }}>
-        Showing <strong style={{ color: mInk }}>{list.length}</strong> of {requests.length} requests
+        Showing <strong style={{ color: mInk }}>{list.length}</strong> of {nonDraftRequests.length} requests
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1593,7 +1594,7 @@ const MgrDashboard = ({ navigate }) => {
         </CardHeader>
         {pending.length === 0 ? (
           <div style={{ padding: '28px 22px', textAlign: 'center', color: mMuted, fontSize: 13 }}>
-            All clear \u2014 nothing waiting on you.
+            All clear — nothing waiting on you.
           </div>
         ) : pending.map(r => (
           <button key={r.id} onClick={() => navigate({ page: 'mgr_request', id: r.id })} style={{
