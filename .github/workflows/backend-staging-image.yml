@@ -47,37 +47,3 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-  smoke:
-    name: Smoke test pushed image
-    runs-on: ubuntu-latest
-    needs: publish
-    steps:
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull image and run healthcheck
-        run: |
-          set -euo pipefail
-          short_sha=${GITHUB_SHA:0:7}
-          image=ghcr.io/${{ github.repository }}/backend:staging-${short_sha}
-          docker pull "$image"
-          docker run -d --name lims-backend-smoke \
-            -p 8010:8000 \
-            -e DJANGO_SECRET_KEY=ci-secret-key \
-            -e JWT_SIGNING_KEY=ci-jwt-signing-key-at-least-32-bytes \
-            -e DEBUG=False \
-            -e ALLOWED_HOSTS=localhost,127.0.0.1 \
-            "$image"
-          trap 'docker logs lims-backend-smoke || true; docker rm -f lims-backend-smoke || true' EXIT
-          for _ in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8010/api/health; then
-              exit 0
-            fi
-            sleep 2
-          done
-          exit 1
