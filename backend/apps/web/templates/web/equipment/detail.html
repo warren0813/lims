@@ -1,0 +1,117 @@
+{% extends "web/base.html" %}
+{% block content %}
+<div class="mb-5">
+  <a href="{% url 'web:equipment' %}" class="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors">
+    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+    </svg>
+    Equipment
+  </a>
+</div>
+
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-xl font-semibold text-slate-900">{{ equipment.name }}</h1>
+    <div class="flex items-center gap-3 mt-1">
+      <span class="text-sm text-slate-500">{{ equipment.model_name }}</span>
+      {% include "web/_status_badge.html" with status=equipment.status %}
+    </div>
+  </div>
+</div>
+
+<div class="grid grid-cols-2 gap-5">
+  <!-- Edit basic info -->
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+    <h2 class="font-semibold text-slate-500 text-xs uppercase tracking-wider mb-4">Basic Info</h2>
+    <form method="post" action="{% url 'web:equipment-update' equipment.pk %}" class="space-y-3">
+      {% csrf_token %}
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Name</label>
+        <input type="text" name="name" value="{{ equipment.name }}"
+               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Model Name</label>
+        <input type="text" name="model_name" value="{{ equipment.model_name }}"
+               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Capacity</label>
+          <input type="number" name="capacity" min="1" value="{{ equipment.capacity }}"
+                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Status</label>
+          <select name="status"
+                  class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+            {% for value, label in status_choices %}
+            <option value="{{ value }}" {% if equipment.status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <button type="submit"
+              class="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 text-sm font-medium transition cursor-pointer">
+        Save Changes
+      </button>
+    </form>
+  </div>
+
+  <!-- Capabilities editor -->
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+    <h2 class="font-semibold text-slate-500 text-xs uppercase tracking-wider mb-4">Capabilities</h2>
+    <form method="post" action="{% url 'web:equipment-capabilities' equipment.pk %}">
+      {% csrf_token %}
+      <div class="space-y-2 mb-4">
+        {% for et in all_exp_types %}
+        <label class="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" name="exp_type_ids" value="{{ et.pk }}"
+                 {% if et.pk in capability_ids %}checked{% endif %}
+                 class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+          <span class="text-slate-700">{{ et.name }}</span>
+          <span class="text-xs text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{{ et.lab_category }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <button type="submit"
+              class="w-full bg-teal-600 hover:bg-teal-700 text-white rounded-lg py-2 text-sm font-medium transition cursor-pointer">
+        Update Capabilities
+      </button>
+    </form>
+  </div>
+
+  <!-- Recipes list -->
+  <div class="col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <div class="px-5 py-4 border-b border-slate-100">
+      <h2 class="font-semibold text-slate-500 text-xs uppercase tracking-wider">Active Recipes</h2>
+    </div>
+    {% if equipment.recipes.all %}
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50">
+        <tr>
+          <th class="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Name</th>
+          <th class="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Experiment Type</th>
+          <th class="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Parameters</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for recipe in equipment.recipes.all %}
+        <tr>
+          <td class="px-5 py-3 font-medium text-slate-700">{{ recipe.name }}</td>
+          <td class="px-5 py-3 text-slate-600">{{ recipe.experiment_type.name }}</td>
+          <td class="px-5 py-3">
+            <code class="text-xs text-slate-500">{{ recipe.parameters|truncatechars:60 }}</code>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="px-5 py-8 text-center text-slate-400 text-sm">
+      No recipes. <a href="{% url 'web:recipes' %}" class="text-blue-600 hover:text-blue-700 font-medium">Add one</a>
+    </p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

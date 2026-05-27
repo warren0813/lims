@@ -1,0 +1,279 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ title }} — LIMS{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="{% static 'web/img/logo.svg' %}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: { fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'] } } }
+    }
+  </script>
+  <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <link rel="stylesheet" href="{% static 'web/css/app.css' %}">
+  <script>
+    document.addEventListener('htmx:configRequest', function(evt) {
+      const csrfCookie = document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='));
+      if (csrfCookie) {
+        evt.detail.headers['X-CSRFToken'] = csrfCookie.split('=')[1].trim();
+      }
+    });
+  </script>
+</head>
+<body class="bg-slate-100 min-h-screen font-sans" hx-boost="true">
+
+<div class="flex min-h-screen">
+  <!-- Sidebar -->
+  <aside id="sidebar" class="w-60 bg-[#0F172A] flex-shrink-0 fixed top-0 bottom-0 left-0 flex flex-col z-30">
+
+    <!-- Logo -->
+    <div class="px-4 py-5 border-b border-white/[0.07]">
+      <a href="{% url 'web:dashboard' %}" class="flex items-center gap-2.5" hx-boost="false">
+        <div class="w-7 h-7 bg-blue-500 rounded-md flex items-center justify-center flex-shrink-0">
+          <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+          </svg>
+        </div>
+        <span class="font-semibold text-white text-sm tracking-wide">LIMS</span>
+      </a>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="flex-1 px-3 py-4 overflow-y-auto space-y-0.5">
+      <a href="{% url 'web:dashboard' %}"
+         class="nav-link flex items-center gap-3 px-3 py-2 rounded-md text-sm text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+        </svg>
+        Dashboard
+      </a>
+
+      {% with role=request.user.profile.role %}
+
+      {% if role == 'fab_user' %}
+      <p class="pt-4 pb-1 px-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Requests</p>
+      <a href="{% url 'web:my-requests' %}"
+         class="nav-link flex items-center gap-3 px-3 py-2 rounded-md text-sm text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+        </svg>
+        My Requests
+      </a>
+      <a href="{% url 'web:request-create' %}"
+         class="nav-link flex items-center gap-3 px-3 py-2 rounded-md text-sm text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+        </svg>
+        New Request
+      </a>
+      {% endif %}
+
+      {% if role == 'lab_staff' or role == 'lab_manager' %}
+      <p class="pt-4 pb-1 px-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Lab Operations</p>
+      <a href="{% url 'web:samples' %}"
+         class="nav-link flex items-center gap-3 px-3 py-2 rounded-md text-sm text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+        </svg>
+        Samples
+      </a>
+      <a href="{% url 'web:wips' %}"
+         class="nav-link flex items-center gap-3 px-3 py-2 rounded-md text-sm text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+        </svg>
+        WIP
+      </a>
+      <a href="{% url 'web:dispatches' %}"
+         class="nav-link flex items-center gap-3 px-3 py-2 rounded-md text-sm text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+        </svg>
+        Dispatches
+      </a>
+      <a href="{% url 'web:equipment' %}"
+         class="nav-link flex items-center gap-3 px-3 py-2 rounded-md text-sm text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        Equipment
+      </a>
+      {% endif %}
+
+      {% if role == 'lab_manager' %}
+      <p class="pt-4 pb-1 px-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Management</p>
+      <a href="{% url 'web:all-requests' %}"
+         class="nav-link flex items-center gap-3 px-3 py-2 rounded-md text-sm text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+        </svg>
+        All Requests
+      </a>
+      <a href="{% url 'web:recipes' %}"
+         class="nav-link flex items-center gap-3 px-3 py-2 rounded-md text-sm text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+        </svg>
+        Recipes
+      </a>
+      <a href="{% url 'web:reports' %}"
+         class="nav-link flex items-center gap-3 px-3 py-2 rounded-md text-sm text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+        Reports
+      </a>
+      {% endif %}
+
+      {% endwith %}
+    </nav>
+
+    <!-- User info / Account switcher -->
+    <div class="px-3 py-3 border-t border-white/[0.07]" x-data="{ open: false }">
+
+      <!-- Toggle button -->
+      <button @click="open = !open"
+              class="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-white/[0.06] transition-colors text-left"
+              hx-boost="false">
+        <div class="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
+          <span class="text-xs font-semibold text-white">{{ request.user.username|first|upper }}</span>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-slate-200 truncate">{{ request.user.username }}</p>
+          {% if request.user.profile %}
+          <p class="text-xs text-slate-500 truncate">{{ request.user.profile.get_role_display }}</p>
+          {% endif %}
+        </div>
+        <svg class="w-3.5 h-3.5 text-slate-500 flex-shrink-0 transition-transform duration-150"
+             :class="open ? 'rotate-180' : ''"
+             fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>
+
+      <!-- Dropdown panel -->
+      <div x-show="open"
+           x-transition:enter="transition ease-out duration-150"
+           x-transition:enter-start="opacity-0 -translate-y-1"
+           x-transition:enter-end="opacity-100 translate-y-0"
+           x-transition:leave="transition ease-in duration-100"
+           x-transition:leave-end="opacity-0"
+           class="mt-1 space-y-0.5">
+
+        {% if linked_accounts %}
+        <p class="px-3 pt-1 pb-0.5 text-xs font-semibold text-slate-600 uppercase tracking-wider">Linked accounts</p>
+        {% for acct in linked_accounts %}
+        <div class="flex items-center gap-2 px-3 py-1.5 rounded-md group">
+          <div class="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0">
+            <span class="text-xs font-semibold text-slate-300">{{ acct.username|first|upper }}</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <a href="{% url 'web:account-switch' acct.user_id %}"
+               class="block text-xs font-medium text-slate-300 hover:text-white truncate leading-tight"
+               hx-boost="false">{{ acct.username }}</a>
+            <p class="text-xs text-slate-600 truncate leading-tight">{{ acct.role_display }}</p>
+          </div>
+          <form method="post" action="{% url 'web:account-remove' acct.user_id %}" hx-boost="false">
+            {% csrf_token %}
+            <button type="submit"
+                    class="text-slate-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                    title="Remove account">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </form>
+        </div>
+        {% endfor %}
+        {% endif %}
+
+        <!-- Add account -->
+        <a href="{% url 'web:account-add' %}"
+           class="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs text-slate-500 hover:text-slate-300 hover:bg-white/[0.04] transition-colors"
+           hx-boost="false">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+          </svg>
+          Add account
+        </a>
+
+        <!-- Sign out -->
+        <a href="{% url 'web:logout' %}"
+           class="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs text-slate-500 hover:text-white hover:bg-white/[0.04] transition-colors"
+           hx-boost="false">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+          </svg>
+          Sign out
+        </a>
+      </div>
+
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="flex-1 ml-60 min-h-screen">
+    <div class="p-6">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</div>
+
+<!-- Toast container -->
+<div class="fixed top-4 right-4 z-50 space-y-2" x-data>
+  <template x-for="toast in $store.toasts" :key="toast.id">
+    <div x-show="toast.visible"
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0 translate-x-4"
+         x-transition:enter-end="opacity-100 translate-x-0"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-end="opacity-0"
+         :class="toast.type === 'error' ? 'bg-red-600' : 'bg-emerald-600'"
+         class="text-white px-4 py-3 rounded-lg shadow-lg text-sm max-w-sm flex items-center gap-2">
+      <svg x-show="toast.type !== 'error'" class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+      </svg>
+      <svg x-show="toast.type === 'error'" class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+      </svg>
+      <span x-text="toast.message"></span>
+    </div>
+  </template>
+</div>
+
+<script>
+document.addEventListener('alpine:init', () => {
+  Alpine.store('toasts', []);
+});
+function showToast(message, type = 'success') {
+  const id = Date.now();
+  Alpine.store('toasts').push({ id, message, type, visible: true });
+  setTimeout(() => {
+    const t = Alpine.store('toasts').find(t => t.id === id);
+    if (t) t.visible = false;
+    setTimeout(() => {
+      const idx = Alpine.store('toasts').findIndex(t => t.id === id);
+      if (idx >= 0) Alpine.store('toasts').splice(idx, 1);
+    }, 300);
+  }, 3500);
+}
+// Highlight active nav link
+document.addEventListener('DOMContentLoaded', () => {
+  const path = window.location.pathname;
+  document.querySelectorAll('#sidebar nav a[href]').forEach(a => {
+    if (a.getAttribute('href') === path) a.classList.add('active');
+  });
+});
+</script>
+
+{% block extra_js %}{% endblock %}
+</body>
+</html>

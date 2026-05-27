@@ -1,0 +1,60 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% trans "Home" %}</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_label|capfirst }}</a>
+  &rsaquo; {% trans "Request Statistics Report" %}
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>{% trans "Request Statistics Report" %}</h1>
+
+<form method="get" style="margin-bottom: 1.5rem;">
+  <table>
+    {{ form.as_table }}
+  </table>
+  <input type="submit" value="{% trans 'Generate Report' %}" class="button default">
+</form>
+
+{% if stats %}
+<h2>{% trans "Summary" %}</h2>
+<table style="width:auto; border-collapse:collapse; margin-bottom:1.5rem;">
+  <tr>
+    <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">{% trans "Total Requests" %}</th>
+    <td style="padding:8px; border-bottom:1px solid #ddd;">{{ stats.total }}</td>
+  </tr>
+  <tr>
+    <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">{% trans "Avg TAT (hours)" %}</th>
+    <td style="padding:8px; border-bottom:1px solid #ddd;">
+      {% if stats.avg_tat_hours is not None %}{{ stats.avg_tat_hours }}{% else %}—{% endif %}
+    </td>
+  </tr>
+</table>
+
+{% if stats.status_distribution %}
+<h2>{% trans "Status Distribution" %}</h2>
+<table style="width:auto; border-collapse:collapse;">
+  <thead>
+    <tr>
+      <th style="text-align:left; padding:8px; border-bottom:2px solid #ddd;">{% trans "Status" %}</th>
+      <th style="text-align:right; padding:8px; border-bottom:2px solid #ddd;">{% trans "Count" %}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in stats.status_distribution %}
+    <tr>
+      <td style="padding:8px; border-bottom:1px solid #eee;">{{ row.status }}</td>
+      <td style="text-align:right; padding:8px; border-bottom:1px solid #eee;">{{ row.count }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% elif form.is_bound %}
+<p>{% trans "No requests found for the selected period." %}</p>
+{% endif %}
+{% endblock %}

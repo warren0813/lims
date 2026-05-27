@@ -1,0 +1,41 @@
+{% extends "web/base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-xl font-semibold text-slate-900">Samples</h1>
+</div>
+
+<form method="get" class="flex gap-3 mb-5">
+  <select name="status"
+          class="border border-slate-300 bg-white rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+          onchange="this.form.submit()">
+    <option value="">All Statuses</option>
+    {% for value, label in status_choices %}
+    <option value="{{ value }}" {% if current_status == value %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+</form>
+
+<div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-slate-50 border-b border-slate-200">
+      <tr>
+        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">ID</th>
+        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Wafer ID</th>
+        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Size</th>
+        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Request</th>
+        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-100" id="samples-tbody">
+      {% for sample in samples %}
+      {% include "web/samples/_row.html" with sample=sample %}
+      {% empty %}
+      <tr>
+        <td colspan="6" class="px-5 py-10 text-center text-slate-400">No samples found.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

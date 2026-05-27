@@ -1,0 +1,46 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% trans "Home" %}</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_label|capfirst }}</a>
+  &rsaquo; {% trans "Equipment Utilization Report" %}
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>{% trans "Equipment Utilization Report" %}</h1>
+
+<form method="get" style="margin-bottom: 1.5rem;">
+  <table>
+    {{ form.as_table }}
+  </table>
+  <input type="submit" value="{% trans 'Generate Report' %}" class="button default">
+</form>
+
+{% if form.is_bound %}
+  {% if rows %}
+  <table style="width:100%; border-collapse:collapse;">
+    <thead>
+      <tr>
+        <th style="text-align:left; padding:8px; border-bottom:2px solid #ddd;">{% trans "Equipment" %}</th>
+        <th style="text-align:right; padding:8px; border-bottom:2px solid #ddd;">{% trans "Dispatch Count" %}</th>
+        <th style="text-align:right; padding:8px; border-bottom:2px solid #ddd;">{% trans "Sample Count" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td style="padding:8px; border-bottom:1px solid #eee;">{{ row.equipment__name }}</td>
+        <td style="text-align:right; padding:8px; border-bottom:1px solid #eee;">{{ row.wip_count }}</td>
+        <td style="text-align:right; padding:8px; border-bottom:1px solid #eee;">{{ row.sample_count }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>{% trans "No dispatch data found for the selected period." %}</p>
+  {% endif %}
+{% endif %}
+{% endblock %}

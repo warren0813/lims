@@ -1,0 +1,12 @@
+<select name="recipe_id" required
+        id="recipe-select-{{ wip.pk }}"
+        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+  {% if recipes %}
+  <option value="">— Select recipe —</option>
+  {% for r in recipes %}
+  <option value="{{ r.pk }}">{{ r.name }}</option>
+  {% endfor %}
+  {% else %}
+  <option value="" disabled>No recipes available for this combination</option>
+  {% endif %}
+</select>

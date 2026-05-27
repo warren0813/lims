@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  ruff:
+    name: Ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run ruff lint
+        run: uv run ruff check .
+
+      - name: Run ruff format check
+        run: uv run ruff format --check .
+
+  test:
+    name: Pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run pytest
+        run: uv run pytest
+
+  postgres-migration-smoke:
+    name: Postgres migration smoke
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: lims_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d lims_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/lims_ci
+      DJANGO_SECRET_KEY: ci-secret-key
+      JWT_SIGNING_KEY: ci-jwt-signing-key-at-least-32-bytes
+      DEBUG: "False"
+      ALLOWED_HOSTS: localhost,127.0.0.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run migrations
+        run: uv run python manage.py migrate --noinput
+
+      - name: Seed demo data
+        run: |
+          uv run python manage.py seed_experiment_types
+          uv run python manage.py seed_demo_users
+
+      - name: Verify seeded data
+        run: |
+          uv run python manage.py shell -c "from django.contrib.auth.models import User; from apps.experiments.models import ExperimentType; assert User.objects.filter(username='fab_user').exists(); assert User.objects.filter(username='lab_member').exists(); assert User.objects.filter(username='lab_manager').exists(); assert ExperimentType.objects.count() == 7"
+
+  docker-smoke:
+    name: Docker runtime smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t lims-backend-ci-smoke .
+
+      - name: Run container and check health
+        run: |
+          set -euo pipefail
+          docker run -d --name lims-backend-ci-smoke \
+            -p 8010:8000 \
+            -e DJANGO_SECRET_KEY=ci-secret-key \
+            -e JWT_SIGNING_KEY=ci-jwt-signing-key-at-least-32-bytes \
+            -e DEBUG=False \
+            -e ALLOWED_HOSTS=localhost,127.0.0.1 \
+            lims-backend-ci-smoke
+          trap 'docker logs lims-backend-ci-smoke || true; docker rm -f lims-backend-ci-smoke || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8010/api/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1

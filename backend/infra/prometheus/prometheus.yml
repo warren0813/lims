@@ -1,0 +1,23 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: lims-railway
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090
+
+  # LIMS Django backend exposes /metrics via django-prometheus.
+  # The internal hostname is the Railway service name; the port must match
+  # the value of PORT on the lims-backend service (see infra/prometheus/README.md).
+  - job_name: lims-backend
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - lims-backend.railway.internal:8000
+        labels:
+          service: lims-backend
+          env: production

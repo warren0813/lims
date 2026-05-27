@@ -1,6 +1,0 @@
-[submodule "frontend"]
-	path = frontend
-	url = https://github.com/lee81116/lims-frontend.git
-[submodule "backend"]
-	path = backend
-	url = https://github.com/c-cf/lims-backend.git
