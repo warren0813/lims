@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
   publish:
@@ -18,30 +19,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Resolve Docker Hub repository
-        id: image
-        run: |
-          repository="${{ vars.DOCKERHUB_BACKEND_REPOSITORY }}"
-          if [ -z "$repository" ]; then
-            echo "Missing GitHub repository variable: DOCKERHUB_BACKEND_REPOSITORY" >&2
-            exit 1
-          fi
-          echo "repository=$repository" >> "$GITHUB_OUTPUT"
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ steps.image.outputs.repository }}
+          images: ghcr.io/${{ github.repository }}/backend
           flavor: latest=false
           tags: |
             type=raw,value=staging
