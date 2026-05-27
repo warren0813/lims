@@ -15,13 +15,11 @@ COPY --from=ghcr.io/astral-sh/uv:0.9 /uv /uvx /usr/local/bin/
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
-RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --no-install-project
 
 COPY . .
 
-RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev
 
 RUN sed -i 's/\r$//' /app/docker-start.sh \  
     && chmod +x /app/docker-start.sh
