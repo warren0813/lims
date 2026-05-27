@@ -1,9 +1,0 @@
-.DS_Store
-*.log
-node_modules/
-.env
-.env.local
-
-# Claude Code — personal, uncommitted
-CLAUDE.local.md
-.claude/worktrees/
