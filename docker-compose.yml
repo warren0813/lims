@@ -1,0 +1,138 @@
+name: lims
+
+x-backend-env: &backend-env
+  DEBUG: "True"
+  DJANGO_SECRET_KEY: "dev-compose-secret-change-me-please-rotate"
+  # ✅ Fix 3: add SERVER_IP to allowed hosts and CORS
+  DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,backend,${SERVER_IP}"
+  CORS_ALLOWED_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000,http://${SERVER_IP}:${FRONTEND_PORT}"
+  DATABASE_URL: "postgres://lims:lims@postgres:5432/lims"
+  REDIS_URL: "redis://redis:6379/0"
+  CELERY_BROKER_URL: "redis://redis:6379/1"
+  CELERY_RESULT_BACKEND: "redis://redis:6379/2"
+  EXPERIMENT_DURATION_SECONDS: "${EXPERIMENT_DURATION_SECONDS:-60}"
+  EQUIPMENT_SIMULATION_STEP_SECONDS: "${EQUIPMENT_SIMULATION_STEP_SECONDS:-0.25}"
+  EQUIPMENT_SIMULATION_TOTAL_SECONDS: "${EQUIPMENT_SIMULATION_TOTAL_SECONDS:-60}"
+
+x-backend-base: &backend-base
+  build:
+    context: ./backend
+  environment:
+    <<: *backend-env
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: lims
+      POSTGRES_USER: lims
+      POSTGRES_PASSWORD: lims
+    ports:
+      # ✅ Fix 4: bind only to localhost — not reachable from network
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lims -d lims"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      # ✅ Fix 4: bind only to localhost — not reachable from network
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    <<: *backend-base
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py seed_demo &&
+             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120"
+    ports:
+      # ✅ Fix 1: gunicorn binds 8000, not 5000
+      - "${SERVER_IP}:${BACKEND_PORT}:8000"
+    volumes:
+      - backend-media:/app/media
+
+  worker-sem:
+    <<: *backend-base
+    command: celery -A config worker --loglevel=info -Q queue.sem -n sem@%h
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+
+  worker-ellipsometer:
+    <<: *backend-base
+    command: celery -A config worker --loglevel=info -Q queue.ellipsometer -n ellipsometer@%h
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+
+  worker-etch:
+    <<: *backend-base
+    command: celery -A config worker --loglevel=info -Q queue.etch -n etch@%h
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+
+  worker-probe:
+    <<: *backend-base
+    command: celery -A config worker --loglevel=info -Q queue.probe -n probe@%h
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # ✅ Fix 2: use SERVER_IP so browsers on other machines can reach backend
+        NEXT_PUBLIC_API_BASE_URL: "http://${SERVER_IP}:${BACKEND_PORT}/api"
+        NEXT_PUBLIC_REALTIME_URL: "http://${SERVER_IP}:${BACKEND_PORT}/api/realtime"
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_BASE_URL: "http://${SERVER_IP}:${BACKEND_PORT}/api"
+      NEXT_PUBLIC_REALTIME_URL: "http://${SERVER_IP}:${BACKEND_PORT}/api/realtime"
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "${SERVER_IP}:${FRONTEND_PORT}:3000"
+
+volumes:
+  postgres-data:
+  redis-data:
+  backend-media:
