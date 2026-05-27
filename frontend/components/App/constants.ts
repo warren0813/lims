@@ -1,0 +1,2 @@
+// @ts-nocheck
+export const SESSION_KEY='lims.session.v1';export const SIGNIN_OPTIONS=['#6c67b8','#1e1e24','#f4a8bf','#bbb7e8'];export const FAB_OPTIONS=['linear-gradient(135deg, #f4a8bf, #bbb7e8)','linear-gradient(135deg, #bbb7e8, #6c67b8)','linear-gradient(135deg, #f4a8bf, #6c67b8)','#1e1e24'];export const TWEAK_DEFAULTS={signInBg:'#1e1e24',signInFg:'#ffffff',fabBg:'linear-gradient(135deg, #f4a8bf, #6c67b8)'};

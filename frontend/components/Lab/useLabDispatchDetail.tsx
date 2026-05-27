@@ -1,0 +1,8 @@
+// @ts-nocheck
+"use client";
+import React from 'react';
+import api from '@/lib/api';
+
+const useLabDispatchDetail=id=>{const[d,setD]=React.useState(null);const[recipeById,setRecipeById]=React.useState(new Map());const[waferResults,setWaferResults]=React.useState([]);const[loading,setLoading]=React.useState(true);const[error,setError]=React.useState(null);const refresh=React.useCallback(()=>{if(id==null||!api||!api.dispatches){setLoading(false);return;}setLoading(true);let cancelled=false;(async()=>{try{const[dp,rs]=await Promise.all([api.dispatches.get(id),api.recipes.list().catch(()=>[])]);if(cancelled)return;setD(dp);setRecipeById(new Map(rs.map(r=>[r.id,r])));const wip=await api.wips.get(dp.wipId).catch(()=>null);if(cancelled)return;const samples=wip?.samples||[];const rollups=await Promise.all(samples.map(s=>api.samples.getExperiments(s.id).then(rows=>({sample:s,rows})).catch(()=>({sample:s,rows:[]}))));if(cancelled)return;const wafers=rollups.map(({sample,rows})=>{const match=rows.find(r=>r.dispatchId===dp.id);return{sampleId:sample.id,wafer:sample.wafer,size:sample.size,verdict:match?.verdict??null,status:match?.status??null};});setWaferResults(wafers);setError(null);}catch(e){if(!cancelled)setError(e.message||String(e));}finally{if(!cancelled)setLoading(false);}})();return()=>{cancelled=true;};},[id]);React.useEffect(()=>{const cleanup=refresh();return cleanup;},[refresh]);const dispatch=d?{...d,recipeParams:recipeById.get(d.recipeId)?.params||null}:null;return{dispatch,waferResults,loading,error,refresh};};
+export default useLabDispatchDetail;
+export { useLabDispatchDetail };

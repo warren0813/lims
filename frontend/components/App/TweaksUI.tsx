@@ -1,0 +1,4 @@
+// @ts-nocheck
+"use client";
+import { SIGNIN_OPTIONS,TWEAK_DEFAULTS } from './constants';import FabGradient from './FabGradient';import TweaksPanel from '@/components/Tweaks/TweaksPanel';import TweakSection from '@/components/Tweaks/TweakSection';import TweakColor from '@/components/Tweaks/TweakColor';import TweakButton from '@/components/Tweaks/TweakButton';
+export default function TweaksUI({t,setTweak}){return <TweaksPanel><TweakSection label="Sign in button"/><TweakColor label="Background" value={t.signInBg} options={SIGNIN_OPTIONS} onChange={v=>setTweak('signInBg',v)}/><TweakColor label="Text" value={t.signInFg} options={['#ffffff','#1e1e24','#f7f8fa']} onChange={v=>setTweak('signInFg',v)}/><TweakSection label="fab_user icon"/><FabGradient value={t.fabBg} onChange={v=>setTweak('fabBg',v)}/><TweakButton onClick={()=>setTweak({...TWEAK_DEFAULTS})}>Reset to theme defaults</TweakButton></TweaksPanel>}
