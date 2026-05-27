@@ -15,8 +15,6 @@ from pathlib import Path
 
 import dj_database_url
 
-from config import observability
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -79,7 +77,6 @@ INSTALLED_APPS = [
     # Third-party
     "ninja",
     "corsheaders",
-    "django_prometheus",
     # Local apps
     "apps.accounts",
     "apps.experiments",
@@ -92,22 +89,7 @@ INSTALLED_APPS = [
 
 LOGIN_URL = "/login/"
 
-# django-prometheus middleware must wrap the entire stack so request
-# duration metrics include time spent in other middleware. Before* runs
-# first, After* runs last.
-_PROMETHEUS_BEFORE = (
-    ("django_prometheus.middleware.PrometheusBeforeMiddleware",)
-    if observability.metrics_enabled()
-    else ()
-)
-_PROMETHEUS_AFTER = (
-    ("django_prometheus.middleware.PrometheusAfterMiddleware",)
-    if observability.metrics_enabled()
-    else ()
-)
-
 MIDDLEWARE = [
-    *_PROMETHEUS_BEFORE,
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -120,7 +102,6 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    *_PROMETHEUS_AFTER,
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -157,19 +138,6 @@ DATABASES = {
         ),
     )
 }
-
-# Optional: wrap the DB engine with django-prometheus to collect query metrics.
-# Disabled by default — adds per-query overhead and only pays off when you want
-# per-model query counts on the Grafana dashboard.
-if observability.db_instrumentation_enabled():
-    _DB_ENGINE_MAP = {
-        "django.db.backends.postgresql": "django_prometheus.db.backends.postgresql",
-        "django.db.backends.sqlite3": "django_prometheus.db.backends.sqlite3",
-        "django.db.backends.mysql": "django_prometheus.db.backends.mysql",
-    }
-    _current_engine = DATABASES["default"].get("ENGINE")
-    if _current_engine in _DB_ENGINE_MAP:
-        DATABASES["default"]["ENGINE"] = _DB_ENGINE_MAP[_current_engine]
 
 
 # Password validation
@@ -219,49 +187,6 @@ JWT = {
     "REFRESH_TOKEN_LIFETIME_DAYS": int(
         os.environ.get("JWT_REFRESH_TOKEN_LIFETIME_DAYS", "7")
     ),
-}
-
-# Logging — always log to stdout (Railway captures container logs). Optionally
-# push directly to Loki when LOKI_URL is set, for stacks without a stdout
-# scraper (Promtail/Alloy).
-_LOG_LEVEL = os.environ.get("DJANGO_LOG_LEVEL", "INFO")
-_LOG_HANDLERS: dict[str, dict] = {
-    "console": {
-        "class": "logging.StreamHandler",
-        "formatter": "verbose",
-    },
-}
-_loki_handler = observability.loki_handler_config()
-if _loki_handler is not None:
-    _LOG_HANDLERS["loki"] = _loki_handler
-
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "verbose": {
-            "format": (
-                "{levelname} {asctime} {name} "
-                "trace_id={otelTraceID} span_id={otelSpanID} {message}"
-            ),
-            "style": "{",
-            # Defaults keep the formatter safe when OTel LoggingInstrumentor
-            # is not active (i.e. OTEL_EXPORTER_OTLP_ENDPOINT is unset).
-            "defaults": {"otelTraceID": "0", "otelSpanID": "0"},
-        },
-    },
-    "handlers": _LOG_HANDLERS,
-    "root": {
-        "handlers": list(_LOG_HANDLERS.keys()),
-        "level": _LOG_LEVEL,
-    },
-    "loggers": {
-        "django": {
-            "handlers": list(_LOG_HANDLERS.keys()),
-            "level": _LOG_LEVEL,
-            "propagate": False,
-        },
-    },
 }
 
 STORAGES = {
