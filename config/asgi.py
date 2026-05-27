@@ -11,6 +11,10 @@ import os
 
 from django.core.asgi import get_asgi_application
 
+from config.observability import setup_tracing
+
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+
+setup_tracing()
 
 application = get_asgi_application()

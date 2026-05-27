@@ -11,6 +11,12 @@ import os
 
 from django.core.wsgi import get_wsgi_application
 
+from config.observability import setup_tracing
+
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+
+# Tracing must be initialized before the WSGI app is built so DjangoInstrumentor
+# can wrap the handler.
+setup_tracing()
 
 application = get_wsgi_application()
