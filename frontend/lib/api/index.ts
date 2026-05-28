@@ -1,10 +1,92 @@
 "use client";
 
+import type { components } from "./types.gen";
+
 declare global { interface Window { LIMS_API_BASE?: string } }
 
 class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
 
 type RequestOpts = { method?: string; body?: unknown; headers?: Record<string, string> };
+
+// Backend response shapes, auto-generated from the Django Ninja OpenAPI
+// spec via `npm run gen:types`. Regenerate after backend schema changes
+// with `uv run python manage.py export_openapi` then `npm run gen:types`.
+type Schemas = components["schemas"];
+
+// Each normalize function below is called with several different backend
+// response variants (List vs Detail vs Brief). The Input types below
+// describe the union of fields the function reads — properties present
+// only on some variants are marked optional, and the function bodies use
+// `||` / `??` to fall back when they're missing. Where a field's runtime
+// type is itself a generated schema we reference it via `Schemas[X]` so
+// regenerating the spec keeps these in lock-step.
+
+type RequestRowInput = {
+  id: number;
+  title: string;
+  status: string;
+  urgency?: string;
+  requester: Schemas["RequesterOut"];
+  note: string;
+  created_at: string;
+  submitted_at: string | null;
+  updated_at: string;
+  sample_count?: number;
+  experiment_types?: Schemas["ExperimentTypeWithParamsOut"][];
+};
+
+type RequestDetailInput = Schemas["RequestDetailOut"];
+
+type SampleExperimentsInput = Schemas["SampleExperimentRollupOut"][] | null | undefined;
+
+type SampleRowInput = {
+  id: number;
+  wafer_id: string;
+  wafer_size: string;
+  status: string;
+  request_id?: number;
+  request?: Schemas["RequestSummaryOut"];
+  has_wip?: boolean;
+  received_at?: string | null;
+  created_at?: string;
+};
+
+type WipInput = {
+  id: number;
+  experiment_type_id: number;
+  experiment_type_name: string;
+  status: string;
+  note: string;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  sample_count?: number;
+  dispatch_count?: number;
+  samples?: Schemas["SampleBriefOut"][];
+  dispatches?: Schemas["DispatchBriefOut"][];
+};
+
+type DispatchInput = {
+  id: number;
+  experiment_type_id: number;
+  experiment_type_name?: string;
+  equipment_id: number;
+  equipment_name?: string;
+  recipe_id: number;
+  recipe_name?: string;
+  status: string;
+  dispatched_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  estimated_duration_seconds: number | null;
+  wip_id?: number;
+  note?: string;
+  result?: Schemas["ExperimentResultOut"] | null;
+  created_by?: Schemas["RequesterOut"] | null;
+};
+
+type EquipmentInput = Schemas["EquipmentOut"];
+type RecipeInput = Schemas["RecipeOut"];
 
 
 const DEFAULT_BASE='/api';
@@ -95,7 +177,7 @@ const formatTimestamp=iso=>{
   const pad=n=>String(n).padStart(2,'0');
   return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
-function normalizeRequestRow(r){
+function normalizeRequestRow(r: RequestRowInput){
   return{
     id:r.id,
     title:r.title,
@@ -115,7 +197,7 @@ function normalizeRequestRow(r){
     history:[]
   };
 }
-function normalizeRequestDetail(r){
+function normalizeRequestDetail(r: RequestDetailInput){
   return{
     ...normalizeRequestRow(r),
     expIds:(r.experiment_types||[]).map(et=>et.id),
@@ -137,7 +219,7 @@ function normalizeRequestDetail(r){
     closed_at:formatTimestamp(r.closed_at)
   };
 }
-function normalizeSampleExperiments(rows){
+function normalizeSampleExperiments(rows: SampleExperimentsInput){
   return(rows||[]).map(r=>({
     experimentTypeId:r.experiment_type?.id??null,
     experimentName:r.experiment_type?.name??'',
@@ -151,7 +233,7 @@ function normalizeSampleExperiments(rows){
     }:null
   }));
 }
-function normalizeSampleRow(s){
+function normalizeSampleRow(s: SampleRowInput){
   const mapped=SAMPLE_STATUS_MAP[s.status]||s.status;
   const hasWip=s.has_wip??false;
   const status=mapped==='received'&&hasWip?'in_wip':mapped;
@@ -169,7 +251,7 @@ function normalizeSampleRow(s){
     created:formatTimestamp(s.created_at)
   };
 }
-function normalizeWip(w){
+function normalizeWip(w: WipInput){
   const samples=(w.samples||[]).map(s=>({
     id:s.id,
     wafer:s.wafer_id,
@@ -194,7 +276,7 @@ function normalizeWip(w){
     dispatches:(w.dispatches||[]).map(normalizeDispatch)
   };
 }
-function normalizeDispatch(d){
+function normalizeDispatch(d: DispatchInput){
   return{
     id:d.id,
     code:dispatchCode(d.id),
@@ -224,7 +306,7 @@ function normalizeDispatch(d){
     }:null
   };
 }
-function normalizeEquipment(e){
+function normalizeEquipment(e: EquipmentInput){
   return{
     id:e.id,
     name:e.name,
@@ -236,7 +318,7 @@ function normalizeEquipment(e){
     parameters:e.parameters||{}
   };
 }
-function normalizeRecipe(r){
+function normalizeRecipe(r: RecipeInput){
   return{
     id:r.id,
     name:r.name,
