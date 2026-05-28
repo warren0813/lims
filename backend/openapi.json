@@ -1,0 +1,6157 @@
+{
+  "components": {
+    "schemas": {
+      "ApprovalLogOut": {
+        "description": "Approval log entry in request detail responses.",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "reviewer": {
+            "$ref": "#/components/schemas/RequesterOut"
+          }
+        },
+        "required": [
+          "reviewer",
+          "action",
+          "comment",
+          "created_at"
+        ],
+        "title": "ApprovalLogOut",
+        "type": "object"
+      },
+      "AutomationResultIn": {
+        "additionalProperties": false,
+        "description": "Input schema for automated equipment result submission.\n\nSame simplification as the manual record_result path — server\nrandomises per-wafer verdict; the equipment integration only needs\nto identify the dispatch and optionally attach a comment string.",
+        "properties": {
+          "comment": {
+            "default": "",
+            "title": "Comment",
+            "type": "string"
+          },
+          "dispatch_id": {
+            "title": "Dispatch Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dispatch_id"
+        ],
+        "title": "AutomationResultIn",
+        "type": "object"
+      },
+      "CapabilityOut": {
+        "description": "Nested output for an equipment capability (experiment type summary).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "CapabilityOut",
+        "type": "object"
+      },
+      "CapabilitySetIn": {
+        "description": "Input schema for setting equipment capabilities.",
+        "properties": {
+          "experiment_type_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Experiment Type Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "experiment_type_ids"
+        ],
+        "title": "CapabilitySetIn",
+        "type": "object"
+      },
+      "CommentIn": {
+        "description": "Input for actions requiring a comment (return, reject).",
+        "properties": {
+          "comment": {
+            "minLength": 1,
+            "title": "Comment",
+            "type": "string"
+          }
+        },
+        "required": [
+          "comment"
+        ],
+        "title": "CommentIn",
+        "type": "object"
+      },
+      "DateRangeOut": {
+        "description": "Date range nested in request statistics responses.",
+        "properties": {
+          "end_date": {
+            "title": "End Date",
+            "type": "string"
+          },
+          "start_date": {
+            "title": "Start Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start_date",
+          "end_date"
+        ],
+        "title": "DateRangeOut",
+        "type": "object"
+      },
+      "DispatchBriefOut": {
+        "description": "Brief dispatch info nested in WIP responses.",
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dispatched_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dispatched At"
+          },
+          "equipment_id": {
+            "title": "Equipment Id",
+            "type": "integer"
+          },
+          "equipment_name": {
+            "title": "Equipment Name",
+            "type": "string"
+          },
+          "estimated_duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Duration Seconds"
+          },
+          "experiment_type_id": {
+            "title": "Experiment Type Id",
+            "type": "integer"
+          },
+          "experiment_type_name": {
+            "title": "Experiment Type Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "recipe_id": {
+            "title": "Recipe Id",
+            "type": "integer"
+          },
+          "recipe_name": {
+            "title": "Recipe Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "experiment_type_id",
+          "experiment_type_name",
+          "equipment_id",
+          "equipment_name",
+          "recipe_id",
+          "recipe_name",
+          "status",
+          "estimated_duration_seconds",
+          "dispatched_at",
+          "completed_at",
+          "created_at"
+        ],
+        "title": "DispatchBriefOut",
+        "type": "object"
+      },
+      "DispatchDetailOut": {
+        "description": "Output schema for dispatch detail responses.",
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RequesterOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dispatched_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dispatched At"
+          },
+          "equipment_id": {
+            "title": "Equipment Id",
+            "type": "integer"
+          },
+          "equipment_name": {
+            "title": "Equipment Name",
+            "type": "string"
+          },
+          "estimated_duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Duration Seconds"
+          },
+          "experiment_type_id": {
+            "title": "Experiment Type Id",
+            "type": "integer"
+          },
+          "experiment_type_name": {
+            "title": "Experiment Type Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "recipe_id": {
+            "title": "Recipe Id",
+            "type": "integer"
+          },
+          "recipe_name": {
+            "title": "Recipe Name",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExperimentResultOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "wip_id": {
+            "title": "Wip Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "wip_id",
+          "experiment_type_id",
+          "experiment_type_name",
+          "equipment_id",
+          "equipment_name",
+          "recipe_id",
+          "recipe_name",
+          "status",
+          "note",
+          "estimated_duration_seconds",
+          "dispatched_at",
+          "completed_at",
+          "result",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DispatchDetailOut",
+        "type": "object"
+      },
+      "DispatchIn": {
+        "description": "Input schema for creating a dispatch.\n\nChat-design: experiment_type is derived from the parent WIP; the\npayload only carries the per-dispatch choices (equipment + recipe).\nestimated_duration_seconds is optional — operators can leave it\nblank, and the SPA falls back to a hardcoded 24h countdown.\nSeconds (not minutes) so demo scenarios can specify sub-minute runs.",
+        "properties": {
+          "equipment_id": {
+            "title": "Equipment Id",
+            "type": "integer"
+          },
+          "estimated_duration_seconds": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Duration Seconds"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "recipe_id": {
+            "title": "Recipe Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "equipment_id",
+          "recipe_id"
+        ],
+        "title": "DispatchIn",
+        "type": "object"
+      },
+      "DispatchListOut": {
+        "description": "Output schema for dispatch list responses.",
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RequesterOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dispatched_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dispatched At"
+          },
+          "equipment_id": {
+            "title": "Equipment Id",
+            "type": "integer"
+          },
+          "estimated_duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Duration Seconds"
+          },
+          "experiment_type_id": {
+            "title": "Experiment Type Id",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "recipe_id": {
+            "title": "Recipe Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "wip_id": {
+            "title": "Wip Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "wip_id",
+          "experiment_type_id",
+          "equipment_id",
+          "recipe_id",
+          "status",
+          "estimated_duration_seconds",
+          "dispatched_at",
+          "completed_at",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DispatchListOut",
+        "type": "object"
+      },
+      "DispatchStatus": {
+        "enum": [
+          "pending",
+          "dispatched",
+          "running",
+          "execution_exception",
+          "unloaded",
+          "result_recorded",
+          "completed",
+          "pending_redispatch",
+          "aborted"
+        ],
+        "title": "DispatchStatus",
+        "type": "string"
+      },
+      "EquipmentBriefOut": {
+        "description": "Brief equipment info nested in utilization responses.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "EquipmentBriefOut",
+        "type": "object"
+      },
+      "EquipmentIn": {
+        "description": "Input schema for creating equipment.",
+        "properties": {
+          "capacity": {
+            "exclusiveMinimum": 0,
+            "title": "Capacity",
+            "type": "integer"
+          },
+          "experiment_type_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Experiment Type Ids",
+            "type": "array"
+          },
+          "model_name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Model Name",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Parameters",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "model_name",
+          "capacity"
+        ],
+        "title": "EquipmentIn",
+        "type": "object"
+      },
+      "EquipmentOut": {
+        "description": "Output schema for equipment responses.",
+        "properties": {
+          "capabilities": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CapabilityOut"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "capacity": {
+            "title": "Capacity",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "model_name": {
+            "title": "Model Name",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Parameters",
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "maintenance",
+              "disabled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "model_name",
+          "capacity",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "EquipmentOut",
+        "type": "object"
+      },
+      "EquipmentUpdate": {
+        "description": "Input schema for partially updating equipment.",
+        "properties": {
+          "capacity": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capacity"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Name"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "parameters": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parameters"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "available",
+                  "maintenance",
+                  "disabled"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "EquipmentUpdate",
+        "type": "object"
+      },
+      "EquipmentUtilizationEntryOut": {
+        "description": "Per-equipment utilization entry.",
+        "properties": {
+          "equipment": {
+            "$ref": "#/components/schemas/EquipmentBriefOut"
+          },
+          "sample_count": {
+            "title": "Sample Count",
+            "type": "integer"
+          },
+          "wip_count": {
+            "title": "Wip Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "equipment",
+          "wip_count",
+          "sample_count"
+        ],
+        "title": "EquipmentUtilizationEntryOut",
+        "type": "object"
+      },
+      "EquipmentUtilizationOut": {
+        "description": "Output schema for the equipment-utilization endpoint.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/EquipmentUtilizationEntryOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "end_date": {
+            "title": "End Date",
+            "type": "string"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "start_date": {
+            "title": "Start Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period",
+          "start_date",
+          "end_date",
+          "data"
+        ],
+        "title": "EquipmentUtilizationOut",
+        "type": "object"
+      },
+      "ErrorOut": {
+        "description": "Output schema for error responses.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorOut",
+        "type": "object"
+      },
+      "ExceptionReportIn": {
+        "description": "Input schema for reporting a dispatch exception.",
+        "properties": {
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "title": "ExceptionReportIn",
+        "type": "object"
+      },
+      "ExperimentResultBrief": {
+        "description": "Result summary nested in the sample experiments rollup.",
+        "properties": {
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "comment",
+          "created_at"
+        ],
+        "title": "ExperimentResultBrief",
+        "type": "object"
+      },
+      "ExperimentResultOut": {
+        "description": "Experiment result details nested in dispatch responses.\n\nPass/fail verdict lives per-wafer on SampleExperimentStatus.verdict\n(exposed via SampleExperimentStatusOut + the sample-experiments\nrollup). This block only carries the dispatch-level operator\ncomment.",
+        "properties": {
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "comment",
+          "created_at"
+        ],
+        "title": "ExperimentResultOut",
+        "type": "object"
+      },
+      "ExperimentTypeBrief": {
+        "description": "Experiment type summary nested in the rollup.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "ExperimentTypeBrief",
+        "type": "object"
+      },
+      "ExperimentTypeIn": {
+        "description": "Input schema for creating an experiment type.",
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "lab_category": {
+            "$ref": "#/components/schemas/LabCategory"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "lab_category"
+        ],
+        "title": "ExperimentTypeIn",
+        "type": "object"
+      },
+      "ExperimentTypeOut": {
+        "description": "Output schema for experiment type responses.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "lab_category": {
+            "$ref": "#/components/schemas/LabCategory"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "lab_category",
+          "is_active",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ExperimentTypeOut",
+        "type": "object"
+      },
+      "ExperimentTypeUpdate": {
+        "description": "Input schema for partially updating an experiment type.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "lab_category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "ExperimentTypeUpdate",
+        "type": "object"
+      },
+      "ExperimentTypeWithParamsOut": {
+        "description": "Nested experiment type with per-request parameters.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "parameters"
+        ],
+        "title": "ExperimentTypeWithParamsOut",
+        "type": "object"
+      },
+      "LabCategory": {
+        "enum": [
+          "RA",
+          "MA",
+          "FA",
+          "TM"
+        ],
+        "title": "LabCategory",
+        "type": "string"
+      },
+      "LoginIn": {
+        "description": "Input schema for the login endpoint.",
+        "properties": {
+          "password": {
+            "title": "Password",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LoginIn",
+        "type": "object"
+      },
+      "ReasonIn": {
+        "description": "Input for cancel action requiring a reason.",
+        "properties": {
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "ReasonIn",
+        "type": "object"
+      },
+      "ReasonOptionalIn": {
+        "description": "Input for actions with optional reason (reject-receiving, report-lost, void, return sample).",
+        "properties": {
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "ReasonOptionalIn",
+        "type": "object"
+      },
+      "RecipeExperimentTypeOut": {
+        "description": "Nested experiment type summary for recipe responses.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "RecipeExperimentTypeOut",
+        "type": "object"
+      },
+      "RecipeIn": {
+        "description": "Input schema for creating a recipe.\n\nChat-design: no equipment_id — recipes are equipment-agnostic.",
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "experiment_type_id": {
+            "title": "Experiment Type Id",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Parameters",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "experiment_type_id"
+        ],
+        "title": "RecipeIn",
+        "type": "object"
+      },
+      "RecipeOut": {
+        "description": "Output schema for recipe responses.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "experiment_type": {
+            "$ref": "#/components/schemas/RecipeExperimentTypeOut"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "experiment_type",
+          "parameters",
+          "is_active",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RecipeOut",
+        "type": "object"
+      },
+      "RecipeUpdate": {
+        "description": "Input schema for partially updating a recipe.\n\nAll fields are optional. Omit a field to leave it unchanged.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "parameters": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parameters"
+          }
+        },
+        "title": "RecipeUpdate",
+        "type": "object"
+      },
+      "RecordResultIn": {
+        "additionalProperties": false,
+        "description": "Input schema for recording a dispatch result.\n\nServer randomises the per-wafer verdict (80% pass / 20% fail) — the\nclient never sends one. extra=\"forbid\" so stale clients still\nposting verdict/data/summary fail loudly (422) instead of silently\nlosing those fields' intent.",
+        "properties": {
+          "comment": {
+            "default": "",
+            "title": "Comment",
+            "type": "string"
+          }
+        },
+        "title": "RecordResultIn",
+        "type": "object"
+      },
+      "RefreshIn": {
+        "description": "Input schema for the token refresh endpoint.",
+        "properties": {
+          "refresh_token": {
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "RefreshIn",
+        "type": "object"
+      },
+      "RefreshOut": {
+        "description": "Output schema for the token refresh response.",
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "refresh_token": {
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "refresh_token"
+        ],
+        "title": "RefreshOut",
+        "type": "object"
+      },
+      "RequestDetailOut": {
+        "description": "Output schema for request detail responses.",
+        "properties": {
+          "approval_logs": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovalLogOut"
+            },
+            "title": "Approval Logs",
+            "type": "array"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "experiment_types": {
+            "items": {
+              "$ref": "#/components/schemas/ExperimentTypeWithParamsOut"
+            },
+            "title": "Experiment Types",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "requester": {
+            "$ref": "#/components/schemas/RequesterOut"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/SampleBriefOut"
+            },
+            "title": "Samples",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "urgency": {
+            "title": "Urgency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "requester",
+          "status",
+          "urgency",
+          "note",
+          "experiment_types",
+          "samples",
+          "approval_logs",
+          "submitted_at",
+          "completed_at",
+          "closed_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RequestDetailOut",
+        "type": "object"
+      },
+      "RequestIn": {
+        "description": "Input schema for creating a commission request.",
+        "properties": {
+          "experiment_parameters": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "default": {},
+            "title": "Experiment Parameters",
+            "type": "object"
+          },
+          "experiment_type_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 1,
+            "title": "Experiment Type Ids",
+            "type": "array"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/SampleIn"
+            },
+            "minItems": 1,
+            "title": "Samples",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "urgency": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RequestUrgency"
+              }
+            ],
+            "default": "1w"
+          }
+        },
+        "required": [
+          "title",
+          "experiment_type_ids",
+          "samples"
+        ],
+        "title": "RequestIn",
+        "type": "object"
+      },
+      "RequestListOut": {
+        "description": "Output schema for request list responses.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "requester": {
+            "$ref": "#/components/schemas/RequesterOut"
+          },
+          "sample_count": {
+            "title": "Sample Count",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "urgency": {
+            "title": "Urgency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "requester",
+          "status",
+          "urgency",
+          "note",
+          "sample_count",
+          "submitted_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RequestListOut",
+        "type": "object"
+      },
+      "RequestStatisticsOut": {
+        "description": "Output schema for the request-statistics endpoint.",
+        "properties": {
+          "average_tat_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Tat Hours"
+          },
+          "period": {
+            "$ref": "#/components/schemas/DateRangeOut"
+          },
+          "status_distribution": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Status Distribution",
+            "type": "object"
+          },
+          "total_requests": {
+            "title": "Total Requests",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "period",
+          "status_distribution",
+          "average_tat_hours",
+          "total_requests"
+        ],
+        "title": "RequestStatisticsOut",
+        "type": "object"
+      },
+      "RequestStatus": {
+        "enum": [
+          "draft",
+          "pending_approval",
+          "approved",
+          "returned",
+          "rejected",
+          "sample_shipped",
+          "in_progress",
+          "exception",
+          "completed",
+          "closed",
+          "cancelled"
+        ],
+        "title": "RequestStatus",
+        "type": "string"
+      },
+      "RequestSummaryOut": {
+        "description": "Brief request summary nested in sample responses.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "RequestSummaryOut",
+        "type": "object"
+      },
+      "RequestUpdateIn": {
+        "description": "Input schema for updating a draft/returned request.\n\ntitle/note/urgency are partial-update fields that work on both\nDRAFT and RETURNED requests. samples and experiment_type_ids are\nDRAFT-only — reviewing a request locks the sample + experiment\nset. None means \"don't change this field\"; an empty list is a\nbusiness-rule violation (samples need ≥1) and is rejected with\n422 by update_request rather than slipping past as a no-op.",
+        "properties": {
+          "experiment_type_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Experiment Type Ids"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "samples": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SampleIn"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Samples"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "urgency": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RequestUrgency"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "RequestUpdateIn",
+        "type": "object"
+      },
+      "RequestUrgency": {
+        "enum": [
+          "3d",
+          "1w",
+          "2w"
+        ],
+        "title": "RequestUrgency",
+        "type": "string"
+      },
+      "RequesterOut": {
+        "description": "Nested requester summary.",
+        "properties": {
+          "department": {
+            "title": "Department",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "department"
+        ],
+        "title": "RequesterOut",
+        "type": "object"
+      },
+      "SampleBriefOut": {
+        "description": "Brief sample info nested in WIP responses.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "wafer_id": {
+            "title": "Wafer Id",
+            "type": "string"
+          },
+          "wafer_size": {
+            "title": "Wafer Size",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "wafer_id",
+          "wafer_size",
+          "status",
+          "request_id"
+        ],
+        "title": "SampleBriefOut",
+        "type": "object"
+      },
+      "SampleDetailOut": {
+        "description": "Output schema for sample detail responses.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "received_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Received At"
+          },
+          "request": {
+            "$ref": "#/components/schemas/RequestSummaryOut"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "wafer_id": {
+            "title": "Wafer Id",
+            "type": "string"
+          },
+          "wafer_size": {
+            "title": "Wafer Size",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "wafer_id",
+          "wafer_size",
+          "status",
+          "request",
+          "note",
+          "received_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SampleDetailOut",
+        "type": "object"
+      },
+      "SampleExperimentRollupOut": {
+        "description": "One row of the per-sample experiments rollup.\n\nStatus semantics (computed server-side from the sample's dispatches):\n  - \"done\": the latest dispatch for this experiment_type is COMPLETED\n  - \"in_progress\": at least one non-terminal dispatch exists\n  - \"pending\": no dispatch has been created yet",
+        "properties": {
+          "dispatch_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dispatch Id"
+          },
+          "experiment_type": {
+            "$ref": "#/components/schemas/ExperimentTypeBrief"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExperimentResultBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          }
+        },
+        "required": [
+          "experiment_type",
+          "status",
+          "verdict",
+          "dispatch_id",
+          "result"
+        ],
+        "title": "SampleExperimentRollupOut",
+        "type": "object"
+      },
+      "SampleExperimentStatusOut": {
+        "description": "Output schema for per-sample experiment progress.\n\nverdict is null until the dispatch's record_result fills it in\n(random pass/fail per wafer).",
+        "properties": {
+          "dispatch_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dispatch Id"
+          },
+          "experiment_type_id": {
+            "title": "Experiment Type Id",
+            "type": "integer"
+          },
+          "experiment_type_name": {
+            "title": "Experiment Type Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          }
+        },
+        "required": [
+          "experiment_type_id",
+          "experiment_type_name",
+          "status",
+          "verdict",
+          "dispatch_id"
+        ],
+        "title": "SampleExperimentStatusOut",
+        "type": "object"
+      },
+      "SampleIn": {
+        "description": "Input for a single sample when creating a request.",
+        "properties": {
+          "wafer_id": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Wafer Id",
+            "type": "string"
+          },
+          "wafer_size": {
+            "$ref": "#/components/schemas/WaferSize"
+          }
+        },
+        "required": [
+          "wafer_id",
+          "wafer_size"
+        ],
+        "title": "SampleIn",
+        "type": "object"
+      },
+      "SampleListOut": {
+        "description": "Output schema for sample list responses.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "has_wip": {
+            "default": false,
+            "title": "Has Wip",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "received_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Received At"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "wafer_id": {
+            "title": "Wafer Id",
+            "type": "string"
+          },
+          "wafer_size": {
+            "title": "Wafer Size",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "wafer_id",
+          "wafer_size",
+          "status",
+          "request_id",
+          "received_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SampleListOut",
+        "type": "object"
+      },
+      "SampleStatus": {
+        "enum": [
+          "created",
+          "shipped",
+          "received",
+          "receiving_exception",
+          "processing",
+          "processing_exception",
+          "completed",
+          "lost",
+          "returned",
+          "voided"
+        ],
+        "title": "SampleStatus",
+        "type": "string"
+      },
+      "TokenOut": {
+        "description": "Output schema for login response with JWT tokens and user data.",
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "department": {
+            "title": "Department",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "refresh_token": {
+            "title": "Refresh Token",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "refresh_token",
+          "id",
+          "username",
+          "role",
+          "department"
+        ],
+        "title": "TokenOut",
+        "type": "object"
+      },
+      "TrendPointOut": {
+        "description": "One day's count on a trend series.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "count"
+        ],
+        "title": "TrendPointOut",
+        "type": "object"
+      },
+      "TrendsOut": {
+        "description": "Output schema for the trends endpoint.",
+        "properties": {
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/TrendPointOut"
+            },
+            "title": "Points",
+            "type": "array"
+          }
+        },
+        "required": [
+          "metric",
+          "days",
+          "points"
+        ],
+        "title": "TrendsOut",
+        "type": "object"
+      },
+      "UserOut": {
+        "description": "Output schema representing an authenticated user with role information.",
+        "properties": {
+          "department": {
+            "title": "Department",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "role",
+          "department"
+        ],
+        "title": "UserOut",
+        "type": "object"
+      },
+      "WIPAddSamplesIn": {
+        "description": "Input schema for adding samples to an existing WIP.",
+        "properties": {
+          "sample_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 1,
+            "title": "Sample Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sample_ids"
+        ],
+        "title": "WIPAddSamplesIn",
+        "type": "object"
+      },
+      "WIPDetailOut": {
+        "description": "Output schema for WIP detail responses.",
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dispatches": {
+            "items": {
+              "$ref": "#/components/schemas/DispatchBriefOut"
+            },
+            "title": "Dispatches",
+            "type": "array"
+          },
+          "experiment_type_id": {
+            "title": "Experiment Type Id",
+            "type": "integer"
+          },
+          "experiment_type_name": {
+            "title": "Experiment Type Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/SampleBriefOut"
+            },
+            "title": "Samples",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "experiment_type_id",
+          "experiment_type_name",
+          "samples",
+          "status",
+          "note",
+          "dispatches",
+          "completed_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WIPDetailOut",
+        "type": "object"
+      },
+      "WIPIn": {
+        "description": "Input schema for creating a WIP.\n\nChat-design: a WIP is bound to one experiment_type at creation time.\nEquipment is chosen later, per dispatch.",
+        "properties": {
+          "experiment_type_id": {
+            "title": "Experiment Type Id",
+            "type": "integer"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "sample_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 1,
+            "title": "Sample Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sample_ids",
+          "experiment_type_id"
+        ],
+        "title": "WIPIn",
+        "type": "object"
+      },
+      "WIPListOut": {
+        "description": "Output schema for WIP list responses.",
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dispatch_count": {
+            "title": "Dispatch Count",
+            "type": "integer"
+          },
+          "experiment_type_id": {
+            "title": "Experiment Type Id",
+            "type": "integer"
+          },
+          "experiment_type_name": {
+            "title": "Experiment Type Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "sample_count": {
+            "title": "Sample Count",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "experiment_type_id",
+          "experiment_type_name",
+          "sample_count",
+          "dispatch_count",
+          "status",
+          "note",
+          "completed_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WIPListOut",
+        "type": "object"
+      },
+      "WIPStatus": {
+        "enum": [
+          "created",
+          "in_progress",
+          "completed",
+          "aborted"
+        ],
+        "title": "WIPStatus",
+        "type": "string"
+      },
+      "WaferSize": {
+        "enum": [
+          "200mm",
+          "300mm"
+        ],
+        "title": "WaferSize",
+        "type": "string"
+      }
+    },
+    "securitySchemes": {
+      "JWTAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "Laboratory Information Management System API",
+    "title": "LIMS API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/auth/login": {
+      "post": {
+        "description": "Authenticate a user and return JWT tokens.\n\nReturns access token, refresh token, and user information on success,\nor 401 on invalid credentials.",
+        "operationId": "apps_accounts_api_login_view",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "summary": "Login View",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "description": "Revoke a refresh token. Requires authentication.",
+        "operationId": "apps_accounts_api_logout_view",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Logout View",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "description": "Return the currently authenticated user's information.",
+        "operationId": "apps_accounts_api_me_view",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Me View",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "description": "Exchange a valid refresh token for a new access + refresh token pair.\n\nImplements refresh token rotation: the old token is deleted and a new\none is created. This limits the window of abuse if a token is leaked.",
+        "operationId": "apps_accounts_api_refresh_view",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "summary": "Refresh View",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/automation/equipment-result/": {
+      "post": {
+        "description": "Automated equipment result submission. Completes dispatch and creates result.\n\nAccepts dispatch in DISPATCHED or RUNNING state. Runs the abbreviated\nstate machine chain: unload → record_result (which now lands\ndirectly in COMPLETED).",
+        "operationId": "apps_wip_api_submit_equipment_result",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutomationResultIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Submit Equipment Result",
+        "tags": [
+          "Automation"
+        ]
+      }
+    },
+    "/api/dispatches/": {
+      "get": {
+        "description": "List dispatches with optional filters. Lab staff and managers only.\n\nSelects created_by__profile so the response can include the\noperator's username and department for each row without an N+1.",
+        "operationId": "apps_wip_api_list_dispatches",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/DispatchStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "wip_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Wip Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "equipment_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Equipment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DispatchListOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "List Dispatches",
+        "tags": [
+          "Dispatches"
+        ]
+      }
+    },
+    "/api/dispatches/{dispatch_id}/": {
+      "get": {
+        "description": "Get dispatch detail. Lab staff and managers only.",
+        "operationId": "apps_wip_api_get_dispatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dispatch_id",
+            "required": true,
+            "schema": {
+              "title": "Dispatch Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Get Dispatch",
+        "tags": [
+          "Dispatches"
+        ]
+      }
+    },
+    "/api/dispatches/{dispatch_id}/abort/": {
+      "post": {
+        "description": "Abort a dispatch. Lab staff and managers allowed.\n\nAborting clears one active dispatch — if the WIP had a prior\nCOMPLETED dispatch and this abort closes out the last in-flight\none, the WIP auto-completes via the same gate as record_result.\nAn all-aborted WIP (no COMPLETED at all) is intentionally NOT\nauto-completed; the operator decides whether to manually complete\nor open a fresh dispatch.",
+        "operationId": "apps_wip_api_abort_dispatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dispatch_id",
+            "required": true,
+            "schema": {
+              "title": "Dispatch Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Abort Dispatch",
+        "tags": [
+          "Dispatches"
+        ]
+      }
+    },
+    "/api/dispatches/{dispatch_id}/record-result/": {
+      "post": {
+        "description": "Record result for an unloaded dispatch — terminal step.\n\nPayload is just {comment}. Per-wafer pass/fail verdicts are rolled\nat unload time (see update_experiment_statuses_on_unload), so by\nthe time the Record Result modal opens, the operator can already\nsee the outcomes. This endpoint only persists the comment, lands\nthe dispatch in COMPLETED, stamps completed_at, and triggers the\nWIP-level auto-complete cascade. Lab staff only.",
+        "operationId": "apps_wip_api_record_result",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dispatch_id",
+            "required": true,
+            "schema": {
+              "title": "Dispatch Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordResultIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Record Result",
+        "tags": [
+          "Dispatches"
+        ]
+      }
+    },
+    "/api/dispatches/{dispatch_id}/redispatch/": {
+      "post": {
+        "description": "Redispatch an exception dispatch. Creates a new PENDING dispatch. Lab staff only.",
+        "operationId": "apps_wip_api_redispatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dispatch_id",
+            "required": true,
+            "schema": {
+              "title": "Dispatch Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Redispatch",
+        "tags": [
+          "Dispatches"
+        ]
+      }
+    },
+    "/api/dispatches/{dispatch_id}/report-exception/": {
+      "post": {
+        "description": "Report an execution exception. Lab staff only.",
+        "operationId": "apps_wip_api_report_exception",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dispatch_id",
+            "required": true,
+            "schema": {
+              "title": "Dispatch Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ExceptionReportIn"
+                  }
+                ],
+                "default": {
+                  "note": ""
+                }
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Report Exception",
+        "tags": [
+          "Dispatches"
+        ]
+      }
+    },
+    "/api/dispatches/{dispatch_id}/start/": {
+      "post": {
+        "description": "Start a dispatch (pending/dispatched → running). Lab staff only.",
+        "operationId": "apps_wip_api_start_dispatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dispatch_id",
+            "required": true,
+            "schema": {
+              "title": "Dispatch Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Start Dispatch",
+        "tags": [
+          "Dispatches"
+        ]
+      }
+    },
+    "/api/dispatches/{dispatch_id}/unload/": {
+      "post": {
+        "description": "Unload a dispatch (dispatched/running → unloaded). Lab staff only.\n\nRolls the per-wafer pass/fail verdict on every SampleExperimentStatus\nrow for this dispatch's WIP × experiment_type. This happens at unload\ntime (not at record_result) so the Record Result modal can display\nthe outcomes before the operator finalises the run.",
+        "operationId": "apps_wip_api_unload_dispatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dispatch_id",
+            "required": true,
+            "schema": {
+              "title": "Dispatch Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Unload Dispatch",
+        "tags": [
+          "Dispatches"
+        ]
+      }
+    },
+    "/api/equipment/": {
+      "get": {
+        "description": "List equipment with optional search and filters.",
+        "operationId": "apps_equipment_api_list_equipment",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "available",
+                    "maintenance",
+                    "disabled"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EquipmentOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "List Equipment",
+        "tags": [
+          "Equipment"
+        ]
+      },
+      "post": {
+        "description": "Create a new equipment. Only lab staff and managers allowed.",
+        "operationId": "apps_equipment_api_create_equipment",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EquipmentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EquipmentOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Create Equipment",
+        "tags": [
+          "Equipment"
+        ]
+      }
+    },
+    "/api/equipment/{equipment_id}": {
+      "get": {
+        "description": "Get a single equipment by ID.",
+        "operationId": "apps_equipment_api_get_equipment",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "equipment_id",
+            "required": true,
+            "schema": {
+              "title": "Equipment Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EquipmentOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Get Equipment",
+        "tags": [
+          "Equipment"
+        ]
+      },
+      "patch": {
+        "description": "Partially update equipment. Only lab staff and managers allowed.",
+        "operationId": "apps_equipment_api_update_equipment",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "equipment_id",
+            "required": true,
+            "schema": {
+              "title": "Equipment Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EquipmentUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EquipmentOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Update Equipment",
+        "tags": [
+          "Equipment"
+        ]
+      }
+    },
+    "/api/equipment/{equipment_id}/capabilities": {
+      "post": {
+        "description": "Replace all capabilities for an equipment.",
+        "operationId": "apps_equipment_api_set_equipment_capabilities",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "equipment_id",
+            "required": true,
+            "schema": {
+              "title": "Equipment Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CapabilitySetIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EquipmentOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Set Equipment Capabilities",
+        "tags": [
+          "Equipment"
+        ]
+      }
+    },
+    "/api/experiment-types/": {
+      "get": {
+        "description": "List experiment types with optional search and filters.\n\nBy default only active items are returned.",
+        "operationId": "apps_experiments_api_list_experiment_types",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lab_category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lab Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_active",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Active"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExperimentTypeOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "List Experiment Types",
+        "tags": [
+          "Experiment Types"
+        ]
+      },
+      "post": {
+        "description": "Create a new experiment type. Only lab staff and managers allowed.",
+        "operationId": "apps_experiments_api_create_experiment_type",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExperimentTypeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentTypeOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Create Experiment Type",
+        "tags": [
+          "Experiment Types"
+        ]
+      }
+    },
+    "/api/experiment-types/{experiment_type_id}": {
+      "delete": {
+        "description": "Soft-delete an experiment type. Only lab staff and managers allowed.",
+        "operationId": "apps_experiments_api_delete_experiment_type",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_type_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Type Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentTypeOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Delete Experiment Type",
+        "tags": [
+          "Experiment Types"
+        ]
+      },
+      "get": {
+        "description": "Get a single experiment type by ID.",
+        "operationId": "apps_experiments_api_get_experiment_type",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_type_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Type Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentTypeOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Get Experiment Type",
+        "tags": [
+          "Experiment Types"
+        ]
+      },
+      "patch": {
+        "description": "Partially update an experiment type. Only lab staff and managers allowed.",
+        "operationId": "apps_experiments_api_update_experiment_type",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_type_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Type Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExperimentTypeUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentTypeOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Update Experiment Type",
+        "tags": [
+          "Experiment Types"
+        ]
+      }
+    },
+    "/api/health": {
+      "get": {
+        "description": "Return the health status of the API.",
+        "operationId": "api_router_health_check",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Health Check",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/recipes/": {
+      "get": {
+        "description": "List recipes with optional filters.",
+        "operationId": "apps_equipment_api_list_recipes",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "experiment_type_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Experiment Type Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_active",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Active"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RecipeOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "List Recipes",
+        "tags": [
+          "Recipes"
+        ]
+      },
+      "post": {
+        "description": "Create a new recipe. Only lab staff and managers allowed.",
+        "operationId": "apps_equipment_api_create_recipe",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecipeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipeOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Create Recipe",
+        "tags": [
+          "Recipes"
+        ]
+      }
+    },
+    "/api/recipes/{recipe_id}": {
+      "delete": {
+        "description": "Soft-delete a recipe. Only lab staff and managers allowed.",
+        "operationId": "apps_equipment_api_delete_recipe",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recipe_id",
+            "required": true,
+            "schema": {
+              "title": "Recipe Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipeOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Delete Recipe",
+        "tags": [
+          "Recipes"
+        ]
+      },
+      "get": {
+        "description": "Get a single recipe by ID.",
+        "operationId": "apps_equipment_api_get_recipe",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recipe_id",
+            "required": true,
+            "schema": {
+              "title": "Recipe Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipeOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Get Recipe",
+        "tags": [
+          "Recipes"
+        ]
+      },
+      "patch": {
+        "description": "Partially update a recipe. Only lab staff and managers allowed.",
+        "operationId": "apps_equipment_api_update_recipe",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recipe_id",
+            "required": true,
+            "schema": {
+              "title": "Recipe Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecipeUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipeOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Update Recipe",
+        "tags": [
+          "Recipes"
+        ]
+      }
+    },
+    "/api/reports/equipment-utilization": {
+      "get": {
+        "description": "Return equipment utilization statistics. Lab Manager only.",
+        "operationId": "apps_reports_api_equipment_utilization",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "period",
+            "required": true,
+            "schema": {
+              "title": "Period",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start_date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Start Date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "End Date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "equipment_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Equipment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EquipmentUtilizationOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Equipment Utilization",
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/reports/request-statistics": {
+      "get": {
+        "description": "Return request statistics for a date range. Lab Manager only.",
+        "operationId": "apps_reports_api_request_statistics",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start_date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Start Date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "End Date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestStatisticsOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Request Statistics",
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/reports/trends": {
+      "get": {
+        "description": "Return a per-day count series for the requested metric.\n\nINTEGRATION_GAPS §4: backs the lab manager dashboard trend chart.\nCurrently only ``requests_per_day`` (Request rows grouped by\ncreated_at::date) is supported; the metric set is centralised in\n_TREND_METRICS so adding new series is one-line.\n\nZero-fills days with no rows so the SPA can plot a continuous\nseries of length ``days`` without client-side gap filling.",
+        "operationId": "apps_reports_api_trends",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "metric",
+            "required": true,
+            "schema": {
+              "title": "Metric",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 365,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrendsOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Trends",
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/requests/": {
+      "get": {
+        "description": "List commission requests. Fab users see only their own.",
+        "operationId": "apps_commissions_api_list_requests",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RequestStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "urgency",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RequestUrgency"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RequestListOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "List Requests",
+        "tags": [
+          "Requests"
+        ]
+      },
+      "post": {
+        "description": "Create a new commission request (draft). Only fab users allowed.",
+        "operationId": "apps_commissions_api_create_request",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestDetailOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Create Request",
+        "tags": [
+          "Requests"
+        ]
+      }
+    },
+    "/api/requests/{request_id}": {
+      "delete": {
+        "description": "Hard-delete a draft request. Only the owning fab user may do this.",
+        "operationId": "apps_commissions_api_delete_draft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Delete Draft",
+        "tags": [
+          "Requests"
+        ]
+      },
+      "get": {
+        "description": "Get request detail with samples, experiment types, and approval logs.",
+        "operationId": "apps_commissions_api_get_request",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Get Request",
+        "tags": [
+          "Requests"
+        ]
+      },
+      "patch": {
+        "description": "Update a draft or returned request. Only the requester (fab user) allowed.\n\nScalar fields (title/note/urgency) can be patched on DRAFT and\nRETURNED. samples and experiment_type_ids are draft-only — once a\nreviewer has seen the request, the sample set and required\nexperiments are locked, even after a return. INTEGRATION_GAPS §2.9.",
+        "operationId": "apps_commissions_api_update_request",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Update Request",
+        "tags": [
+          "Requests"
+        ]
+      }
+    },
+    "/api/requests/{request_id}/approve": {
+      "post": {
+        "description": "Approve a pending request. Only lab managers allowed.",
+        "operationId": "apps_commissions_api_approve_request",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Approve Request",
+        "tags": [
+          "Requests"
+        ]
+      }
+    },
+    "/api/requests/{request_id}/cancel": {
+      "post": {
+        "description": "Cancel a request. Fab user can cancel own; lab manager can cancel any.",
+        "operationId": "apps_commissions_api_cancel_request",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReasonIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Cancel Request",
+        "tags": [
+          "Requests"
+        ]
+      }
+    },
+    "/api/requests/{request_id}/close": {
+      "post": {
+        "description": "Close a completed request. Only lab managers allowed.",
+        "operationId": "apps_commissions_api_close_request",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Close Request",
+        "tags": [
+          "Requests"
+        ]
+      }
+    },
+    "/api/requests/{request_id}/reject": {
+      "post": {
+        "description": "Reject a pending request with comment. Only lab managers allowed.",
+        "operationId": "apps_commissions_api_reject_request",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Reject Request",
+        "tags": [
+          "Requests"
+        ]
+      }
+    },
+    "/api/requests/{request_id}/return": {
+      "post": {
+        "description": "Return a pending request with comment. Only lab managers allowed.",
+        "operationId": "apps_commissions_api_return_request",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Return Request",
+        "tags": [
+          "Requests"
+        ]
+      }
+    },
+    "/api/requests/{request_id}/ship": {
+      "post": {
+        "description": "Mark an approved request as shipped. Only the requester allowed.",
+        "operationId": "apps_commissions_api_ship_request",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Ship Request",
+        "tags": [
+          "Requests"
+        ]
+      }
+    },
+    "/api/requests/{request_id}/submit": {
+      "post": {
+        "description": "Submit a draft/returned request for approval. Only the requester allowed.",
+        "operationId": "apps_commissions_api_submit_request",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Submit Request",
+        "tags": [
+          "Requests"
+        ]
+      }
+    },
+    "/api/samples/": {
+      "get": {
+        "description": "List samples with optional filters. Fab users see only their own.\n\nAnnotates ``has_wip`` (True when the sample is in at least one\nnon-terminal WIP) so the SPA's Lab Samples page can derive its\n``in_wip`` pill without a second round-trip — see\nINTEGRATION_GAPS §3.2 (sample status enum) and §4.",
+        "operationId": "apps_commissions_api_list_samples",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "request_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Request Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SampleStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SampleListOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "List Samples",
+        "tags": [
+          "Samples"
+        ]
+      }
+    },
+    "/api/samples/{sample_id}": {
+      "get": {
+        "description": "Get sample detail with request info.",
+        "operationId": "apps_commissions_api_get_sample",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sample_id",
+            "required": true,
+            "schema": {
+              "title": "Sample Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SampleDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Get Sample",
+        "tags": [
+          "Samples"
+        ]
+      }
+    },
+    "/api/samples/{sample_id}/experiment-status": {
+      "get": {
+        "description": "Get experiment progress for a sample. Fab users see only their own samples.",
+        "operationId": "apps_commissions_api_get_sample_experiment_status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sample_id",
+            "required": true,
+            "schema": {
+              "title": "Sample Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SampleExperimentStatusOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Get Sample Experiment Status",
+        "tags": [
+          "Samples"
+        ]
+      }
+    },
+    "/api/samples/{sample_id}/experiments": {
+      "get": {
+        "description": "Per-experiment-type rollup for one sample's wafer detail page.\n\nFor each experiment_type required by the sample's parent request,\ninspects dispatches across this sample's WIPs and returns the\nstatus, dispatch_id, and (when done) the result. INTEGRATION_GAPS\n§2.8 resolution A — saves the SPA three extra requests per wafer\ndetail open.",
+        "operationId": "apps_commissions_api_sample_experiments",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sample_id",
+            "required": true,
+            "schema": {
+              "title": "Sample Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SampleExperimentRollupOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Sample Experiments",
+        "tags": [
+          "Samples"
+        ]
+      }
+    },
+    "/api/samples/{sample_id}/receive": {
+      "post": {
+        "description": "Confirm sample receipt. Only lab staff/managers allowed.\n\nStamps Sample.received_at with the current time on the receive\ntransition. The frontend uses this to render the urgency countdown\non the Samples list (deadline = received_at + urgency_duration),\nso it must be captured at the moment of receipt, not derived from\nlater updated_at values.",
+        "operationId": "apps_commissions_api_receive_sample",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sample_id",
+            "required": true,
+            "schema": {
+              "title": "Sample Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SampleDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Receive Sample",
+        "tags": [
+          "Samples"
+        ]
+      }
+    },
+    "/api/samples/{sample_id}/reject-receiving": {
+      "post": {
+        "description": "Mark sample as receiving exception. Only lab staff/managers allowed.",
+        "operationId": "apps_commissions_api_reject_receiving_sample",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sample_id",
+            "required": true,
+            "schema": {
+              "title": "Sample Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReasonOptionalIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SampleDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Reject Receiving Sample",
+        "tags": [
+          "Samples"
+        ]
+      }
+    },
+    "/api/samples/{sample_id}/report-lost": {
+      "post": {
+        "description": "Mark sample as lost. Only lab staff/managers allowed.",
+        "operationId": "apps_commissions_api_report_lost_sample",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sample_id",
+            "required": true,
+            "schema": {
+              "title": "Sample Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SampleDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Report Lost Sample",
+        "tags": [
+          "Samples"
+        ]
+      }
+    },
+    "/api/samples/{sample_id}/return": {
+      "post": {
+        "description": "Return a sample (from exception states). Only lab staff/managers allowed.",
+        "operationId": "apps_commissions_api_return_sample",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sample_id",
+            "required": true,
+            "schema": {
+              "title": "Sample Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SampleDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Return Sample",
+        "tags": [
+          "Samples"
+        ]
+      }
+    },
+    "/api/samples/{sample_id}/void": {
+      "post": {
+        "description": "Void a sample (from exception/lost states). Only lab staff/managers allowed.",
+        "operationId": "apps_commissions_api_void_sample",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sample_id",
+            "required": true,
+            "schema": {
+              "title": "Sample Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SampleDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Void Sample",
+        "tags": [
+          "Samples"
+        ]
+      }
+    },
+    "/api/wips/": {
+      "get": {
+        "description": "List WIPs. Lab staff and managers only.",
+        "operationId": "apps_wip_api_list_wips",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WIPStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WIPListOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "List Wips",
+        "tags": [
+          "WIPs"
+        ]
+      },
+      "post": {
+        "description": "Create a WIP for one experiment_type with the given samples.\n\nChat-design: equipment is chosen later per-dispatch; WIP only pins\nthe experiment_type and the sample batch.",
+        "operationId": "apps_wip_api_create_wip",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WIPIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WIPDetailOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Create Wip",
+        "tags": [
+          "WIPs"
+        ]
+      }
+    },
+    "/api/wips/{wip_id}/": {
+      "get": {
+        "description": "Get WIP detail with dispatches. Lab staff and managers only.",
+        "operationId": "apps_wip_api_get_wip",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wip_id",
+            "required": true,
+            "schema": {
+              "title": "Wip Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WIPDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Get Wip",
+        "tags": [
+          "WIPs"
+        ]
+      }
+    },
+    "/api/wips/{wip_id}/abort/": {
+      "post": {
+        "description": "Abort a WIP. Marks associated samples as processing_exception.",
+        "operationId": "apps_wip_api_abort_wip",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wip_id",
+            "required": true,
+            "schema": {
+              "title": "Wip Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WIPDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Abort Wip",
+        "tags": [
+          "WIPs"
+        ]
+      }
+    },
+    "/api/wips/{wip_id}/complete/": {
+      "post": {
+        "description": "Complete a WIP. Requires all dispatches to be in terminal state.\n\nAuto-completes samples and checks if parent requests are done.",
+        "operationId": "apps_wip_api_complete_wip",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wip_id",
+            "required": true,
+            "schema": {
+              "title": "Wip Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WIPDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Complete Wip",
+        "tags": [
+          "WIPs"
+        ]
+      }
+    },
+    "/api/wips/{wip_id}/dispatches/": {
+      "post": {
+        "description": "Create a dispatch for a WIP using the chosen equipment + recipe.\n\nChat-design: experiment_type is derived from the parent WIP, so the\npayload only carries equipment_id, recipe_id, and an optional note.\nValidates that the equipment supports the WIP's experiment_type, the\nrecipe targets the same experiment_type, and the equipment has room.\n\nRejects with 422 if the WIP already has an active dispatch (anything\nother than COMPLETED or ABORTED). A WIP can accumulate many\ndispatches over its lifetime, but only one at a time.\n\nAutomatically transitions WIP to in_progress on first dispatch.",
+        "operationId": "apps_wip_api_create_dispatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wip_id",
+            "required": true,
+            "schema": {
+              "title": "Wip Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WIPDetailOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Create Dispatch",
+        "tags": [
+          "WIPs"
+        ]
+      }
+    },
+    "/api/wips/{wip_id}/samples/": {
+      "post": {
+        "description": "Add samples to an existing WIP. Lab staff only.\n\nThe new samples' parent requests must include the WIP's experiment_type.",
+        "operationId": "apps_wip_api_add_samples_to_wip",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wip_id",
+            "required": true,
+            "schema": {
+              "title": "Wip Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WIPAddSamplesIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WIPDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Add Samples To Wip",
+        "tags": [
+          "WIPs"
+        ]
+      }
+    }
+  },
+  "servers": []
+}
