@@ -25,15 +25,13 @@ async function proxy(request: NextRequest): Promise<NextResponse> {
   }
 
   const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
-  const body = hasBody ? request.body : undefined;
+  const body = hasBody ? await request.arrayBuffer() : undefined;
 
   const upstream = await fetch(backendUrl, {
     method: request.method,
     headers: forwardHeaders,
     body,
     redirect: 'follow',
-    // @ts-expect-error — Node fetch supports duplex for streaming bodies
-    duplex: hasBody ? 'half' : undefined,
   });
 
   const responseHeaders = new Headers();
