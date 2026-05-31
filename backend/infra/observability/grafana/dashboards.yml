@@ -1,0 +1,16 @@
+# Grafana dashboard provisioning. Loads every *.json under the mounted
+# dashboards/ folder into a "LIMS" folder on startup, so the stack opens with
+# ready-made dashboards instead of a blank Grafana.
+apiVersion: 1
+
+providers:
+  - name: LIMS
+    orgId: 1
+    folder: LIMS
+    type: file
+    disableDeletion: false
+    allowUiUpdates: true
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
