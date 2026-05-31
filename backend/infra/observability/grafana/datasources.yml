@@ -1,0 +1,25 @@
+# Grafana datasource provisioning for the local observability stack.
+# Auto-loaded on startup so Grafana opens with Prometheus / Tempo / Loki
+# already wired — no manual datasource setup. Fixed `uid`s let the bundled
+# dashboards reference these datasources deterministically.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100

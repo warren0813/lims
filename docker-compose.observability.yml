@@ -1,0 +1,89 @@
+# Opt-in LOCAL LGTM observability stack (Loki · Grafana · Tempo · Prometheus).
+#
+# Overlay on top of the base file — bring it up only when you want dashboards:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.observability.yml up
+#
+# Plain `docker compose up` stays lean (postgres + backend + frontend) and never
+# starts these containers. The app is already instrumented (config/observability.py);
+# this overlay only adds the collector/storage/UI backends AND points the backend
+# at them. Production runs its own LGTM on Railway — see backend/infra/.
+#
+# Open Grafana at http://localhost:3001 (anonymous, admin role). Datasources for
+# Prometheus, Tempo, and Loki are pre-provisioned.
+name: lims
+
+services:
+  # Augment the existing backend service: wire tracing → Tempo and logs → Loki.
+  # These env vars live HERE (not in the base file) so the default compose path
+  # leaves OTEL/Loki disabled and the backend never retries connections to
+  # collectors that aren't running.
+  backend:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo:4317"
+      OTEL_SERVICE_NAME: "lims-backend"
+      LOKI_URL: "http://loki:3100/loki/api/v1/push"
+      METRICS_ENABLED: "True"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      tempo:
+        condition: service_started
+      loki:
+        condition: service_started
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    volumes:
+      - ./backend/infra/observability/prometheus-local.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./backend/infra/observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "127.0.0.1:3200:3200"   # Tempo query API / Grafana datasource
+      - "127.0.0.1:4317:4317"   # OTLP gRPC (handy for host-side exporters)
+
+  loki:
+    image: grafana/loki:3.2.1
+    command: ["-config.file=/etc/loki/local-config.yaml"]   # image-bundled default
+    volumes:
+      - loki-data:/loki
+    ports:
+      - "127.0.0.1:3100:3100"
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_FEATURE_TOGGLES_ENABLE: "traceqlEditor"
+    volumes:
+      - ./backend/infra/observability/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./backend/infra/observability/grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./backend/infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+    ports:
+      - "127.0.0.1:3001:3000"
+
+volumes:
+  prometheus-data:
+  tempo-data:
+  loki-data:
+  grafana-data:

@@ -1,0 +1,27 @@
+# Prometheus scrape config for the LOCAL docker-compose observability stack.
+#
+# This is the local-dev counterpart to infra/prometheus/prometheus.yml (which
+# targets the Railway internal network). The only difference is the scrape
+# target: here it is the compose service name `backend`, not *.railway.internal.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: lims-local
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090
+
+  # LIMS Django backend exposes /metrics via django-prometheus.
+  # `backend` resolves on the compose network to the Django container.
+  - job_name: lims-backend
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - backend:8000
+        labels:
+          service: lims-backend
+          env: local
