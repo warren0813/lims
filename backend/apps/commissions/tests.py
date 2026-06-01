@@ -193,6 +193,116 @@ class TestSample:
 
 
 @pytest.mark.django_db
+class TestSampleExperiment:
+    def test_per_wafer_experiment_association(self, user, experiment_type):
+        """A sample can be linked to its own experiment types."""
+        from apps.commissions.models import (
+            Request,
+            Sample,
+            SampleExperiment,
+            WaferSize,
+        )
+
+        req = Request.objects.create(title="per-wafer", requester=user)
+        sample = Sample.objects.create(
+            request=req, wafer_id="WF-001", wafer_size=WaferSize.SIZE_300MM
+        )
+        SampleExperiment.objects.create(sample=sample, experiment_type=experiment_type)
+
+        assert list(sample.experiment_types.all()) == [experiment_type]
+
+    def test_unique_together(self, user, experiment_type):
+        """Duplicate (sample, experiment_type) rows are rejected."""
+        from apps.commissions.models import (
+            Request,
+            Sample,
+            SampleExperiment,
+            WaferSize,
+        )
+
+        req = Request.objects.create(title="unique", requester=user)
+        sample = Sample.objects.create(
+            request=req, wafer_id="WF-001", wafer_size=WaferSize.SIZE_300MM
+        )
+        SampleExperiment.objects.create(sample=sample, experiment_type=experiment_type)
+
+        with pytest.raises(IntegrityError):
+            SampleExperiment.objects.create(
+                sample=sample, experiment_type=experiment_type
+            )
+
+
+@pytest.mark.django_db
+class TestInitializeSampleExperimentStatuses:
+    def _make_request_with_two_experiments(self, user):
+        from apps.commissions.models import Request, RequestExperiment, WaferSize
+        from apps.experiments.models import ExperimentType, LabCategory
+
+        et_cb = ExperimentType.objects.create(name="CB", lab_category=LabCategory.RA)
+        et_tct = ExperimentType.objects.create(name="TCT", lab_category=LabCategory.RA)
+        req = Request.objects.create(title="r", requester=user)
+        RequestExperiment.objects.create(request=req, experiment_type=et_cb)
+        RequestExperiment.objects.create(request=req, experiment_type=et_tct)
+        return req, et_cb, et_tct, WaferSize
+
+    def test_uses_per_wafer_selection_not_cross_product(self, user):
+        """Each wafer gets only its own experiments — not the request union."""
+        from apps.commissions.models import Sample, SampleExperiment
+        from apps.commissions.services import (
+            initialize_sample_experiment_statuses,
+        )
+        from apps.wip.models import SampleExperimentStatus
+
+        req, et_cb, et_tct, WaferSize = self._make_request_with_two_experiments(user)
+        s_a = Sample.objects.create(
+            request=req, wafer_id="A", wafer_size=WaferSize.SIZE_300MM
+        )
+        s_b = Sample.objects.create(
+            request=req, wafer_id="B", wafer_size=WaferSize.SIZE_300MM
+        )
+        SampleExperiment.objects.create(sample=s_a, experiment_type=et_cb)
+        SampleExperiment.objects.create(sample=s_b, experiment_type=et_tct)
+
+        initialize_sample_experiment_statuses(req)
+
+        a_types = set(
+            SampleExperimentStatus.objects.filter(sample=s_a).values_list(
+                "experiment_type_id", flat=True
+            )
+        )
+        b_types = set(
+            SampleExperimentStatus.objects.filter(sample=s_b).values_list(
+                "experiment_type_id", flat=True
+            )
+        )
+        assert a_types == {et_cb.pk}
+        assert b_types == {et_tct.pk}
+        assert SampleExperimentStatus.objects.filter(sample__request=req).count() == 2
+
+    def test_falls_back_to_request_set_for_legacy_samples(self, user):
+        """A wafer with no per-wafer rows inherits the full request set."""
+        from apps.commissions.models import Sample
+        from apps.commissions.services import (
+            initialize_sample_experiment_statuses,
+        )
+        from apps.wip.models import SampleExperimentStatus
+
+        req, et_cb, et_tct, WaferSize = self._make_request_with_two_experiments(user)
+        s = Sample.objects.create(
+            request=req, wafer_id="LEGACY", wafer_size=WaferSize.SIZE_300MM
+        )
+
+        initialize_sample_experiment_statuses(req)
+
+        types = set(
+            SampleExperimentStatus.objects.filter(sample=s).values_list(
+                "experiment_type_id", flat=True
+            )
+        )
+        assert types == {et_cb.pk, et_tct.pk}
+
+
+@pytest.mark.django_db
 class TestApprovalLog:
     def test_create_approval_log(self, user):
         """ApprovalLog can be created successfully."""

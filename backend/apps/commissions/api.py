@@ -20,6 +20,7 @@ from apps.commissions.models import (
     RequestStatus,
     RequestUrgency,
     Sample,
+    SampleExperiment,
     SampleStatus,
 )
 from apps.commissions.schemas import (
@@ -88,7 +89,10 @@ def _finalize_due_dispatches() -> None:
 def _request_detail_queryset() -> models.QuerySet[Request]:
     """Base queryset with all prefetches needed for RequestDetailOut."""
     return Request.objects.select_related("requester__profile").prefetch_related(
-        "samples",
+        Prefetch(
+            "samples",
+            queryset=Sample.objects.prefetch_related("sample_experiments"),
+        ),
         Prefetch(
             "request_experiments",
             queryset=RequestExperiment.objects.select_related("experiment_type"),
@@ -98,6 +102,34 @@ def _request_detail_queryset() -> models.QuerySet[Request]:
             queryset=ApprovalLog.objects.select_related("reviewer__profile"),
         ),
     )
+
+
+def _resolve_sample_experiments(
+    sample_in_ids: list[int] | None,
+    request_exp_ids: list[int],
+) -> tuple[list[int] | None, str | None]:
+    """Resolve a sample's per-wafer experiment ids against the request set.
+
+    ``sample_in_ids`` is the per-wafer selection from the payload. Returns
+    ``(resolved_ids, error)``:
+      - None/empty selection  → inherit the full request set (legacy behaviour)
+      - a subset of the request set → that exact subset (deduped)
+      - anything outside the request set → ``(None, "<error message>")``
+
+    Pure / no DB writes so callers can validate every sample *before* opening
+    the transaction (an early ``return`` inside ``transaction.atomic()`` would
+    otherwise commit partial work).
+    """
+    if not sample_in_ids:
+        return list(request_exp_ids), None
+    deduped = list(dict.fromkeys(sample_in_ids))
+    extra = set(deduped) - set(request_exp_ids)
+    if extra:
+        return None, (
+            "Each wafer's experiment_type_ids must be a subset of the "
+            "request's experiment_type_ids"
+        )
+    return deduped, None
 
 
 def _get_request_for_user(
@@ -219,6 +251,17 @@ def create_request(request: HttpRequest, payload: RequestIn):
     if len(exp_types) != len(exp_type_id_set):
         return 400, {"detail": "One or more experiment types not found or inactive"}
 
+    # Resolve + validate each wafer's experiment selection *before* the
+    # transaction so a bad subset doesn't commit a partial request.
+    sample_exp_ids: list[list[int]] = []
+    for sample_in in payload.samples:
+        resolved, error = _resolve_sample_experiments(
+            sample_in.experiment_type_ids, exp_type_id_set
+        )
+        if error:
+            return 400, {"detail": error}
+        sample_exp_ids.append(resolved)
+
     with transaction.atomic():
         req = Request.objects.create(
             title=payload.title,
@@ -227,19 +270,25 @@ def create_request(request: HttpRequest, payload: RequestIn):
             requester=request.auth,
         )
 
-        # Create request-experiment associations
+        # Create request-experiment associations (request-level union + params)
         for et in exp_types:
             params = payload.experiment_parameters.get(str(et.pk), {})
             RequestExperiment.objects.create(
                 request=req, experiment_type=et, parameters=params
             )
 
-        # Create samples
-        for sample_in in payload.samples:
-            Sample.objects.create(
+        # Create samples + their per-wafer experiment selections
+        for sample_in, chosen_ids in zip(payload.samples, sample_exp_ids, strict=True):
+            sample = Sample.objects.create(
                 request=req,
                 wafer_id=sample_in.wafer_id,
                 wafer_size=sample_in.wafer_size,
+            )
+            SampleExperiment.objects.bulk_create(
+                [
+                    SampleExperiment(sample=sample, experiment_type_id=et_id)
+                    for et_id in chosen_ids
+                ]
             )
 
     # Re-fetch with prefetches for response
@@ -325,6 +374,27 @@ def update_request(request: HttpRequest, request_id: int, payload: RequestUpdate
                     "detail": "One or more experiment_type_ids not found or inactive"
                 }
 
+        # Resolve + validate each wafer's experiment selection against the
+        # effective request-level set (the new set if it's being replaced in
+        # this PATCH, otherwise the request's current set). Done before any
+        # mutation so a bad subset rolls the whole PATCH back.
+        resolved_sample_exp_ids: list[list[int]] | None = None
+        if samples_in is not None:
+            if new_exp_types is not None:
+                effective_exp_ids = [et.pk for et in new_exp_types]
+            else:
+                effective_exp_ids = list(
+                    req.request_experiments.values_list("experiment_type_id", flat=True)
+                )
+            resolved_sample_exp_ids = []
+            for s in samples_in:
+                resolved, error = _resolve_sample_experiments(
+                    s.get("experiment_type_ids"), effective_exp_ids
+                )
+                if error:
+                    return 422, {"detail": error}
+                resolved_sample_exp_ids.append(resolved)
+
         # Scalar partial update (title/note/urgency).
         for field, value in sent.items():
             setattr(req, field, value)
@@ -335,15 +405,28 @@ def update_request(request: HttpRequest, request_id: int, payload: RequestUpdate
             req.request_experiments.all().delete()
             for et in new_exp_types:
                 RequestExperiment.objects.create(request=req, experiment_type=et)
+            # Keep per-wafer selections consistent: if the experiment set
+            # shrank and the samples aren't being resent in this PATCH, drop
+            # any per-wafer rows now outside the request set.
+            if samples_in is None:
+                SampleExperiment.objects.filter(sample__request=req).exclude(
+                    experiment_type_id__in=[et.pk for et in new_exp_types]
+                ).delete()
 
         # Replace samples — safe in DRAFT because no WIPs reference them.
         if samples_in is not None:
             req.samples.all().delete()
-            for s in samples_in:
-                Sample.objects.create(
+            for s, chosen_ids in zip(samples_in, resolved_sample_exp_ids, strict=True):
+                sample = Sample.objects.create(
                     request=req,
                     wafer_id=s["wafer_id"],
                     wafer_size=s["wafer_size"],
+                )
+                SampleExperiment.objects.bulk_create(
+                    [
+                        SampleExperiment(sample=sample, experiment_type_id=et_id)
+                        for et_id in chosen_ids
+                    ]
                 )
 
     req = _request_detail_queryset().get(pk=req.pk)

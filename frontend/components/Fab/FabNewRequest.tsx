@@ -44,7 +44,7 @@ const FabNewRequest = ({
   const [urgency, setUrgency] = React.useState(draft?.urgency || '1w');
   const [wafers, setWafers] = React.useState<WaferEntry[]>(
     draft?.samples?.length
-      ? draft.samples.map((s) => ({ wafer: s.wafer, size: s.size, expIds: draft.expIds || [] }))
+      ? draft.samples.map((s) => ({ wafer: s.wafer, size: s.size, expIds: s.expIds || [] }))
       : [{ wafer: '', size: '200mm', expIds: [] }],
   );
   const [busy, setBusy] = React.useState(false);
@@ -76,7 +76,11 @@ const FabNewRequest = ({
     setApiError(null);
     try {
       const expIdsAll = Array.from(new Set(wafers.flatMap((w) => w.expIds)));
-      const samples = wafers.map((w) => ({ wafer_id: w.wafer.trim(), wafer_size: w.size }));
+      const samples = wafers.map((w) => ({
+        wafer_id: w.wafer.trim(),
+        wafer_size: w.size,
+        experiment_type_ids: w.expIds,
+      }));
       const payload = {
         title: title.trim(),
         note: note.trim(),

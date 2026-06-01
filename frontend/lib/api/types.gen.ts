@@ -1730,7 +1730,7 @@ export interface components {
             note: string;
             requester: components["schemas"]["RequesterOut"];
             /** Samples */
-            samples: components["schemas"]["SampleBriefOut"][];
+            samples: components["schemas"]["RequestSampleBriefOut"][];
             /** Status */
             status: string;
             /** Submitted At */
@@ -1803,6 +1803,30 @@ export interface components {
             updated_at: string;
             /** Urgency */
             urgency: string;
+        };
+        /**
+         * RequestSampleBriefOut
+         * @description Brief sample info nested in request detail responses.
+         *
+         *     Distinct from ``apps.wip.schemas.SampleBriefOut`` — these two used to share
+         *     the class name ``SampleBriefOut``, which collided in the OpenAPI component
+         *     registry (only one survived, silently mistyping the other in the generated
+         *     frontend client). Keep this name unique.
+         */
+        RequestSampleBriefOut: {
+            /**
+             * Experiment Type Ids
+             * @default []
+             */
+            experiment_type_ids: number[];
+            /** Id */
+            id: number;
+            /** Status */
+            status: string;
+            /** Wafer Id */
+            wafer_id: string;
+            /** Wafer Size */
+            wafer_size: string;
         };
         /**
          * RequestStatisticsOut
@@ -1959,8 +1983,16 @@ export interface components {
         /**
          * SampleIn
          * @description Input for a single sample when creating a request.
+         *
+         *     ``experiment_type_ids`` is the per-wafer experiment selection. It must be a
+         *     subset of the request-level ``experiment_type_ids``. When omitted (None),
+         *     the wafer inherits the full request-level set — preserving the legacy
+         *     "every wafer runs every experiment" behaviour for callers that don't care
+         *     about per-wafer selection (e.g. the legacy SSR form).
          */
         SampleIn: {
+            /** Experiment Type Ids */
+            experiment_type_ids?: number[] | null;
             /** Wafer Id */
             wafer_id: string;
             wafer_size: components["schemas"]["WaferSize"];

@@ -14,21 +14,31 @@ from apps.commissions.models import Request, RequestStatus, SampleStatus
 
 
 def initialize_sample_experiment_statuses(req: Request) -> None:
-    """Create SampleExperimentStatus rows for every sample × experiment_type
-    in this request. Called once when the request transitions to IN_PROGRESS.
+    """Create SampleExperimentStatus rows from each wafer's *own* experiment
+    selection. Called once when the request transitions to IN_PROGRESS.
+
+    Per-wafer selection lives on ``Sample.experiment_types`` (the
+    ``SampleExperiment`` through table). A wafer with no per-wafer rows — e.g.
+    a request created via the legacy SSR form, which only records the
+    request-level set — falls back to the full request-level experiment set so
+    it still gets initialised.
     """
     # Local import to avoid a top-of-file circular dep: apps.wip imports
     # from apps.commissions.state_machine in its services module.
     from apps.wip.models import SampleExperimentStatus
 
-    request_experiments = req.request_experiments.select_related(
-        "experiment_type"
-    ).all()
-    for sample in req.samples.all():
-        for re in request_experiments:
+    request_experiment_types = [
+        re.experiment_type
+        for re in req.request_experiments.select_related("experiment_type").all()
+    ]
+    for sample in req.samples.prefetch_related("experiment_types").all():
+        chosen = list(sample.experiment_types.all())
+        if not chosen:
+            chosen = request_experiment_types
+        for experiment_type in chosen:
             SampleExperimentStatus.objects.get_or_create(
                 sample=sample,
-                experiment_type=re.experiment_type,
+                experiment_type=experiment_type,
             )
 
 

@@ -1326,7 +1326,7 @@
           },
           "samples": {
             "items": {
-              "$ref": "#/components/schemas/SampleBriefOut"
+              "$ref": "#/components/schemas/RequestSampleBriefOut"
             },
             "title": "Samples",
             "type": "array"
@@ -1502,6 +1502,43 @@
           "updated_at"
         ],
         "title": "RequestListOut",
+        "type": "object"
+      },
+      "RequestSampleBriefOut": {
+        "description": "Brief sample info nested in request detail responses.\n\nDistinct from ``apps.wip.schemas.SampleBriefOut`` — these two used to share\nthe class name ``SampleBriefOut``, which collided in the OpenAPI component\nregistry (only one survived, silently mistyping the other in the generated\nfrontend client). Keep this name unique.",
+        "properties": {
+          "experiment_type_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Experiment Type Ids",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "wafer_id": {
+            "title": "Wafer Id",
+            "type": "string"
+          },
+          "wafer_size": {
+            "title": "Wafer Size",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "wafer_id",
+          "wafer_size",
+          "status"
+        ],
+        "title": "RequestSampleBriefOut",
         "type": "object"
       },
       "RequestStatisticsOut": {
@@ -1879,8 +1916,22 @@
         "type": "object"
       },
       "SampleIn": {
-        "description": "Input for a single sample when creating a request.",
+        "description": "Input for a single sample when creating a request.\n\n``experiment_type_ids`` is the per-wafer experiment selection. It must be a\nsubset of the request-level ``experiment_type_ids``. When omitted (None),\nthe wafer inherits the full request-level set — preserving the legacy\n\"every wafer runs every experiment\" behaviour for callers that don't care\nabout per-wafer selection (e.g. the legacy SSR form).",
         "properties": {
+          "experiment_type_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Experiment Type Ids"
+          },
           "wafer_id": {
             "maxLength": 100,
             "minLength": 1,
