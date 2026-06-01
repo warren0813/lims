@@ -17,7 +17,9 @@ docker compose up --build
 | API docs     | http://localhost:8000/api/docs |
 | PostgreSQL   | localhost:5432                 |
 
-On first boot the database is migrated and seeded with demo accounts automatically.
+By default, Docker Compose migrates the database and seeds demo data on startup.
+To preserve equipment, recipe, experiment-type, or demo-user edits across local
+container rebuilds, set `RUN_DEMO_SEEDS=0` in `.env` after initialization.
 
 ### Demo accounts
 
@@ -112,3 +114,28 @@ All API calls go through the Next.js server-side proxy. `LIMS_BACKEND_URL` contr
 | `lab_manager` | `/manager/dashboard`   |
 
 Root `/` redirects to the appropriate dashboard based on the stored session, or to `/login` if unauthenticated.
+
+---
+
+## Container startup controls
+
+The backend image keeps migrations and demo seeds separate:
+
+| Variable | Image default | Docker Compose default | Purpose |
+|----------|---------------|------------------------|---------|
+| `RUN_MIGRATIONS` | `1` | `1` | Apply Django migrations when the backend container starts |
+| `RUN_DEMO_SEEDS` | `0` | `1` | Refresh demo users, experiment types, equipment, capabilities, and recipes |
+
+`RUN_DEMO_SEEDS=1` is intended for a fresh local database or a deliberate demo
+reset. It updates existing seeded records, so it can overwrite changes made in
+the UI.
+
+For Railway, keep:
+
+```text
+RUN_MIGRATIONS=1
+RUN_DEMO_SEEDS=0
+```
+
+For the first Railway initialization only, temporarily set
+`RUN_DEMO_SEEDS=1`, redeploy once, then change it back to `0`.
