@@ -3,7 +3,12 @@ from django.urls import reverse
 
 from apps.accounts.factories import LabStaffFactory
 from apps.commissions.factories import RequestFactory, SampleFactory
-from apps.commissions.models import RequestExperiment, RequestStatus, SampleStatus
+from apps.commissions.models import (
+    RequestExperiment,
+    RequestStatus,
+    SampleExperiment,
+    SampleStatus,
+)
 from apps.commissions.state_machine import InvalidTransitionError
 from apps.equipment.factories import EquipmentFactory, RecipeFactory
 from apps.equipment.models import EquipmentCapability
@@ -55,6 +60,37 @@ def test_web_wip_create_rolls_back_when_sample_transition_fails(client, monkeypa
     assert WIPSample.objects.count() == 0
     sample.refresh_from_db()
     assert sample.status == SampleStatus.RECEIVED
+
+
+@pytest.mark.django_db
+def test_web_wip_create_rejects_experiment_selected_only_for_another_wafer(client):
+    profile = LabStaffFactory()
+    user = profile.user
+    et_a = ExperimentTypeFactory(name="ET-A")
+    et_b = ExperimentTypeFactory(name="ET-B")
+    request_obj = RequestFactory(status=RequestStatus.IN_PROGRESS, requester=user)
+    RequestExperiment.objects.create(request=request_obj, experiment_type=et_a)
+    RequestExperiment.objects.create(request=request_obj, experiment_type=et_b)
+    wafer_a = SampleFactory(
+        request=request_obj, wafer_id="WF-A", status=SampleStatus.RECEIVED
+    )
+    wafer_b = SampleFactory(
+        request=request_obj, wafer_id="WF-B", status=SampleStatus.RECEIVED
+    )
+    SampleExperiment.objects.create(sample=wafer_a, experiment_type=et_a)
+    SampleExperiment.objects.create(sample=wafer_b, experiment_type=et_b)
+    client.force_login(user)
+
+    response = client.post(
+        reverse("web:wip-create"),
+        data={
+            "sample_ids": [str(wafer_a.pk)],
+            "experiment_type_id": str(et_b.pk),
+        },
+    )
+
+    assert response.status_code == 400
+    assert not WIPSample.objects.filter(sample=wafer_a).exists()
 
 
 @pytest.mark.django_db

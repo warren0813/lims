@@ -116,9 +116,9 @@ def validate_samples_for_wip(
 ) -> tuple[list[Sample], str | None]:
     """Validate that samples are eligible for WIP creation/addition.
 
-    When experiment_type is provided, also enforces the chat-design
-    constraint that every sample's parent request must include the
-    experiment_type in its request_experiments.
+    When experiment_type is provided, also enforces that every sample
+    selected that experiment type. Samples without per-wafer rows fall
+    back to their parent request's experiment set for legacy compatibility.
 
     Returns (samples, error_message). error_message is None on success.
     """
@@ -139,20 +139,42 @@ def validate_samples_for_wip(
             )
 
     if experiment_type is not None:
-        request_ids = {s.request_id for s in samples}
-        covered_request_ids = set(
+        sample_ids_with_selection = set(
+            Sample.objects.filter(
+                pk__in=[s.pk for s in samples],
+                experiment_types__isnull=False,
+            ).values_list("pk", flat=True)
+        )
+        matching_sample_ids = set(
+            Sample.objects.filter(
+                pk__in=sample_ids_with_selection,
+                experiment_types=experiment_type,
+            ).values_list("pk", flat=True)
+        )
+        legacy_request_ids = {
+            s.request_id for s in samples if s.pk not in sample_ids_with_selection
+        }
+        covered_legacy_request_ids = set(
             Request.objects.filter(
-                pk__in=request_ids,
+                pk__in=legacy_request_ids,
                 request_experiments__experiment_type=experiment_type,
             ).values_list("pk", flat=True)
         )
-        missing = request_ids - covered_request_ids
-        if missing:
-            sample_labels = ", ".join(
-                s.wafer_id for s in samples if s.request_id in missing
+        missing_samples = [
+            s
+            for s in samples
+            if (
+                (s.pk in sample_ids_with_selection and s.pk not in matching_sample_ids)
+                or (
+                    s.pk not in sample_ids_with_selection
+                    and s.request_id not in covered_legacy_request_ids
+                )
             )
+        ]
+        if missing_samples:
+            sample_labels = ", ".join(s.wafer_id for s in missing_samples)
             return [], (
-                f"Sample(s) {sample_labels}: parent request does not include "
+                f"Sample(s) {sample_labels}: wafer does not include "
                 f"experiment type '{experiment_type.name}'"
             )
 

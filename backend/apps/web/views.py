@@ -61,7 +61,10 @@ from apps.wip.models import (
     WIPSample,
     WIPStatus,
 )
-from apps.wip.services import update_experiment_statuses_on_unload
+from apps.wip.services import (
+    update_experiment_statuses_on_unload,
+    validate_samples_for_wip,
+)
 from apps.wip.state_machine import (
     InvalidTransitionError as WIPInvalidTransitionError,
 )
@@ -965,40 +968,19 @@ def wip_create(request: HttpRequest) -> HttpResponse:
     except (ExperimentType.DoesNotExist, ValueError):
         return _action_error(request, "Invalid experiment type.", redirect_url="/wips/")
 
-    samples = list(Sample.objects.select_related("request").filter(pk__in=sample_ids))
-    if not samples:
+    if not sample_ids:
         return _action_error(request, "No samples selected.", redirect_url="/wips/")
 
-    for sample in samples:
-        if sample.request.status != RequestStatus.IN_PROGRESS:
-            return _action_error(
-                request,
-                f"Sample {sample.wafer_id}: request is not in_progress.",
-                redirect_url="/wips/",
-            )
-        if sample.status not in (SampleStatus.RECEIVED, SampleStatus.PROCESSING):
-            return _action_error(
-                request,
-                f"Sample {sample.wafer_id}: invalid status '{sample.status}'.",
-                redirect_url="/wips/",
-            )
+    try:
+        selected_sample_ids = [int(sample_id) for sample_id in sample_ids]
+    except ValueError:
+        return _action_error(request, "Invalid sample.", redirect_url="/wips/")
 
-    # Every sample's request must include the chosen experiment_type
-    # (chat-design constraint).
-    request_ids = {s.request_id for s in samples}
-    covered_request_ids = set(
-        Request.objects.filter(
-            pk__in=request_ids,
-            request_experiments__experiment_type=experiment_type,
-        ).values_list("pk", flat=True)
-    )
-    missing = request_ids - covered_request_ids
-    if missing:
-        bad = ", ".join(s.wafer_id for s in samples if s.request_id in missing)
+    samples, error = validate_samples_for_wip(selected_sample_ids, experiment_type)
+    if error:
         return _action_error(
             request,
-            f"Sample(s) {bad}: parent request does not include experiment type "
-            f"'{experiment_type.name}'.",
+            error,
             redirect_url="/wips/",
         )
 

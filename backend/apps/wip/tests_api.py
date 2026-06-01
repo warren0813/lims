@@ -5,7 +5,12 @@ from django.test import Client
 
 from apps.accounts.factories import FabUserFactory, LabManagerFactory, LabStaffFactory
 from apps.commissions.factories import RequestFactory, SampleFactory
-from apps.commissions.models import RequestExperiment, RequestStatus, SampleStatus
+from apps.commissions.models import (
+    RequestExperiment,
+    RequestStatus,
+    SampleExperiment,
+    SampleStatus,
+)
 from apps.equipment.factories import EquipmentFactory, RecipeFactory
 from apps.equipment.models import EquipmentCapability
 from apps.experiments.factories import ExperimentTypeFactory
@@ -299,6 +304,38 @@ class TestWIPCreate:
         assert resp.status_code == 400
         assert "experiment type" in resp.json()["detail"].lower()
 
+    def test_create_wip_rejects_experiment_selected_only_for_another_wafer(
+        self, client, auth_headers, lab_staff
+    ):
+        """Wafer A cannot enter an experiment WIP selected only for wafer B."""
+        et_a = ExperimentTypeFactory(name="ET-A")
+        et_b = ExperimentTypeFactory(name="ET-B")
+        req = RequestFactory(status=RequestStatus.IN_PROGRESS, requester=lab_staff)
+        RequestExperiment.objects.create(request=req, experiment_type=et_a)
+        RequestExperiment.objects.create(request=req, experiment_type=et_b)
+        wafer_a = SampleFactory(
+            request=req, wafer_id="WF-A", status=SampleStatus.RECEIVED
+        )
+        wafer_b = SampleFactory(
+            request=req, wafer_id="WF-B", status=SampleStatus.RECEIVED
+        )
+        SampleExperiment.objects.create(sample=wafer_a, experiment_type=et_a)
+        SampleExperiment.objects.create(sample=wafer_b, experiment_type=et_b)
+
+        resp = client.post(
+            "/api/wips/",
+            data={
+                "sample_ids": [wafer_a.pk],
+                "experiment_type_id": et_b.pk,
+            },
+            content_type="application/json",
+            **auth_headers(lab_staff),
+        )
+
+        assert resp.status_code == 400
+        assert "WF-A" in resp.json()["detail"]
+        assert not WIPSample.objects.filter(sample=wafer_a).exists()
+
     def test_create_wip_fab_user_forbidden(
         self, client, auth_headers, fab_user, sample, experiment_type
     ):
@@ -350,6 +387,43 @@ class TestWIPDetail:
         nested = resp.json()["dispatches"][0]
         assert nested["equipment_id"] == dispatch.equipment_id
         assert nested["equipment_name"] == dispatch.equipment.name
+
+
+@pytest.mark.django_db
+class TestWIPAddSamples:
+    def test_add_samples_rejects_experiment_selected_only_for_another_wafer(
+        self, client, auth_headers, lab_staff
+    ):
+        """Adding samples to an existing WIP enforces the same per-wafer rule."""
+        et_a = ExperimentTypeFactory(name="ET-A")
+        et_b = ExperimentTypeFactory(name="ET-B")
+        req = RequestFactory(status=RequestStatus.IN_PROGRESS, requester=lab_staff)
+        RequestExperiment.objects.create(request=req, experiment_type=et_a)
+        RequestExperiment.objects.create(request=req, experiment_type=et_b)
+        wafer_a = SampleFactory(
+            request=req, wafer_id="WF-A", status=SampleStatus.RECEIVED
+        )
+        wafer_b = SampleFactory(
+            request=req, wafer_id="WF-B", status=SampleStatus.PROCESSING
+        )
+        SampleExperiment.objects.create(sample=wafer_a, experiment_type=et_a)
+        SampleExperiment.objects.create(sample=wafer_b, experiment_type=et_b)
+        wip = WIPFactory(
+            experiment_type=et_b,
+            created_by=lab_staff,
+        )
+        WIPSample.objects.create(wip=wip, sample=wafer_b)
+
+        resp = client.post(
+            f"/api/wips/{wip.pk}/samples/",
+            data={"sample_ids": [wafer_a.pk]},
+            content_type="application/json",
+            **auth_headers(lab_staff),
+        )
+
+        assert resp.status_code == 400
+        assert "WF-A" in resp.json()["detail"]
+        assert not WIPSample.objects.filter(wip=wip, sample=wafer_a).exists()
 
 
 @pytest.mark.django_db

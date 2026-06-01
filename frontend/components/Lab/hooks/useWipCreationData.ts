@@ -10,7 +10,6 @@ const useWipCreationData = () => {
   const [experimentTypes, setExperimentTypes] = React.useState([]);
   const [pickerSamples, setPickerSamples] = React.useState([]);
   const [equipment, setEquipment] = React.useState([]);
-  const [requestExpMap, setRequestExpMap] = React.useState(new Map());
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(null);
   React.useEffect(() => {
@@ -32,13 +31,17 @@ const useWipCreationData = () => {
         const readyReqIds = new Set(
           reqDetails.filter((r) => r && r.rawStatus === 'in_progress').map((r) => r.id),
         );
-        const map = new Map();
+        const sampleExpMap = new Map<number, number[]>();
         reqDetails.forEach((r) => {
-          if (r) map.set(r.id, r.expIds || []);
+          if (!r) return;
+          (r.samples || []).forEach((s: RequestSample) => {
+            sampleExpMap.set(s.id, s.expIds?.length ? s.expIds : r.expIds || []);
+          });
         });
         const eligibleIds = new Set(eligible.map((s: Sample) => s.id));
         const combined = eligible.map((s: Sample) => ({
           ...s,
+          expIds: sampleExpMap.get(s.id) || [],
           blockReason: readyReqIds.has(s.requestId) ? null : 'request_not_ready',
         }));
         reqDetails.forEach((req) => {
@@ -53,6 +56,7 @@ const useWipCreationData = () => {
               raw_status: s.raw_status,
               status: s.status,
               hasWip: false,
+              expIds: sampleExpMap.get(s.id) || [],
               blockReason: 'not_received',
             });
           });
@@ -60,13 +64,12 @@ const useWipCreationData = () => {
         setExperimentTypes(exps);
         setPickerSamples(combined);
         setEquipment(equip);
-        setRequestExpMap(map);
         setError(null);
       })
       .catch((err) => setError(err.message || String(err)))
       .finally(() => setLoading(false));
   }, []);
-  return { experimentTypes, pickerSamples, equipment, requestExpMap, loading, error };
+  return { experimentTypes, pickerSamples, equipment, loading, error };
 };
 export default useWipCreationData;
 export { useWipCreationData };

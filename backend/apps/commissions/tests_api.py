@@ -14,6 +14,7 @@ from apps.commissions.models import (
     Request,
     RequestExperiment,
     RequestStatus,
+    SampleExperiment,
     SampleStatus,
 )
 from apps.experiments.factories import ExperimentTypeFactory
@@ -1247,6 +1248,27 @@ class TestSampleExperimentsRollup:
     def test_not_found(self, client, auth_headers, lab_staff):
         resp = client.get(self.URL_TEMPLATE.format(99999), **auth_headers(lab_staff))
         assert resp.status_code == 404
+
+    def test_only_returns_experiments_selected_for_this_wafer(
+        self, client, auth_headers, lab_staff
+    ):
+        """Wafer detail excludes experiments selected only for sibling wafers."""
+        et_a = ExperimentTypeFactory(name="ET-A")
+        et_b = ExperimentTypeFactory(name="ET-B")
+        req = RequestFactory(status=RequestStatus.IN_PROGRESS)
+        RequestExperiment.objects.create(request=req, experiment_type=et_a)
+        RequestExperiment.objects.create(request=req, experiment_type=et_b)
+        wafer_a = SampleFactory(request=req, wafer_id="WF-A")
+        wafer_b = SampleFactory(request=req, wafer_id="WF-B")
+        SampleExperiment.objects.create(sample=wafer_a, experiment_type=et_a)
+        SampleExperiment.objects.create(sample=wafer_b, experiment_type=et_b)
+
+        resp = client.get(
+            self.URL_TEMPLATE.format(wafer_a.pk), **auth_headers(lab_staff)
+        )
+
+        assert resp.status_code == 200
+        assert [row["experiment_type"]["id"] for row in resp.json()] == [et_a.pk]
 
     def test_fab_user_cannot_see_other_users_sample(
         self, client, auth_headers, fab_user
