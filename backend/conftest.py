@@ -9,6 +9,10 @@ from apps.accounts.auth import create_access_token
 def pytest_configure():
     if not settings.configured:
         django.setup()
+    # Disable the simulated-machine failure roll by default so existing
+    # auto-complete tests stay deterministic. Tests covering the failure
+    # path opt in explicitly with override_settings(DISPATCH_FAILURE_RATE=...).
+    settings.DISPATCH_FAILURE_RATE = 0.0
 
 
 @pytest.fixture

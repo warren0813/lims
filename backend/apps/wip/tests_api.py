@@ -1,7 +1,7 @@
 """API tests for the wip app (WIP, Dispatch, and Automation endpoints)."""
 
 import pytest
-from django.test import Client
+from django.test import Client, override_settings
 
 from apps.accounts.factories import FabUserFactory, LabManagerFactory, LabStaffFactory
 from apps.commissions.factories import RequestFactory, SampleFactory
@@ -1989,3 +1989,104 @@ class TestFinalizeDueDispatches:
         )
         assert match is not None
         assert match["status"] == "done"
+
+
+@pytest.mark.django_db
+class TestDispatchFailureNotification:
+    """Run-level failure roll: a finishing simulated dispatch may land in
+    EXECUTION_EXCEPTION instead of COMPLETED and email the configured
+    recipients. Failure rate is forced per-test via override_settings —
+    the suite default (conftest) is 0.0."""
+
+    def _set_overdue(self, dispatch):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        dispatch.auto_complete_at = timezone.now() - timedelta(seconds=1)
+        dispatch.save(update_fields=["auto_complete_at"])
+
+    @override_settings(
+        DISPATCH_FAILURE_RATE=1.0,
+        DISPATCH_FAILURE_NOTIFY_EMAILS=["lab-manager@example.com"],
+        DEFAULT_FROM_EMAIL="lims@example.com",
+    )
+    def test_failure_roll_drives_execution_exception_and_emails(
+        self, running_dispatch, mailoutbox
+    ):
+        from apps.wip.services import finalize_due_dispatches
+
+        self._set_overdue(running_dispatch)
+        finalized = finalize_due_dispatches()
+
+        assert running_dispatch.pk in finalized
+        running_dispatch.refresh_from_db()
+        assert running_dispatch.status == DispatchStatus.EXECUTION_EXCEPTION
+        # Exception path records no result and stamps no completion time.
+        assert running_dispatch.completed_at is None
+        assert not hasattr(running_dispatch, "result")
+        # The triggering WIP must NOT auto-complete on an exception.
+        running_dispatch.wip.refresh_from_db()
+        assert running_dispatch.wip.status == WIPStatus.IN_PROGRESS
+        # Exactly one alert, addressed to the configured recipient.
+        assert len(mailoutbox) == 1
+        assert mailoutbox[0].to == ["lab-manager@example.com"]
+        assert mailoutbox[0].from_email == "lims@example.com"
+        assert str(running_dispatch.pk) in mailoutbox[0].subject
+
+    @override_settings(
+        DISPATCH_FAILURE_RATE=0.0,
+        DISPATCH_FAILURE_NOTIFY_EMAILS=["lab-manager@example.com"],
+    )
+    def test_zero_rate_completes_and_sends_no_email(self, running_dispatch, mailoutbox):
+        from apps.wip.services import finalize_due_dispatches
+
+        self._set_overdue(running_dispatch)
+        finalize_due_dispatches()
+
+        running_dispatch.refresh_from_db()
+        assert running_dispatch.status == DispatchStatus.COMPLETED
+        assert len(mailoutbox) == 0
+
+    @override_settings(
+        DISPATCH_FAILURE_RATE=1.0,
+        DISPATCH_FAILURE_NOTIFY_EMAILS=[],
+    )
+    def test_failure_without_recipients_still_fails_but_sends_no_email(
+        self, running_dispatch, mailoutbox
+    ):
+        """An empty recipient list disables the email without blocking the
+        state transition — the dispatch still lands in EXECUTION_EXCEPTION."""
+        from apps.wip.services import finalize_due_dispatches
+
+        self._set_overdue(running_dispatch)
+        finalize_due_dispatches()
+
+        running_dispatch.refresh_from_db()
+        assert running_dispatch.status == DispatchStatus.EXECUTION_EXCEPTION
+        assert len(mailoutbox) == 0
+
+    @override_settings(
+        DISPATCH_FAILURE_RATE=1.0,
+        DISPATCH_FAILURE_NOTIFY_EMAILS=["lab-manager@example.com"],
+    )
+    def test_notify_dispatch_failure_helper_returns_true(
+        self, running_dispatch, mailoutbox
+    ):
+        """The notify helper reports success and hands one message to the
+        backend when recipients are configured."""
+        from apps.wip.notifications import notify_dispatch_failure
+
+        sent = notify_dispatch_failure(running_dispatch)
+        assert sent is True
+        assert len(mailoutbox) == 1
+
+    @override_settings(DISPATCH_FAILURE_NOTIFY_EMAILS=[])
+    def test_notify_dispatch_failure_helper_skips_without_recipients(
+        self, running_dispatch, mailoutbox
+    ):
+        from apps.wip.notifications import notify_dispatch_failure
+
+        sent = notify_dispatch_failure(running_dispatch)
+        assert sent is False
+        assert len(mailoutbox) == 0
