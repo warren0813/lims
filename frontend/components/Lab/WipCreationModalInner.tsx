@@ -28,7 +28,6 @@ const WipCreationModalInner = ({
     experimentTypes,
     pickerSamples,
     equipment,
-    requestExpMap,
     loading,
     error: loadError,
   } = useWipCreationData();
@@ -38,7 +37,7 @@ const WipCreationModalInner = ({
   const [busy, setBusy] = React.useState(false);
   const [submitErr, setSubmitErr] = React.useState(null);
   const eligibleSamples = experimentTypeId
-    ? pickerSamples.filter((s) => (requestExpMap.get(s.requestId) || []).includes(experimentTypeId))
+    ? pickerSamples.filter((s) => (s.expIds || []).includes(experimentTypeId))
     : [];
   const capableEquipment = equipment.filter((e) =>
     (e.capabilities || []).some((c: { id: number }) => c.id === experimentTypeId),

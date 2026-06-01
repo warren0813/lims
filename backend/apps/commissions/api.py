@@ -744,8 +744,8 @@ def get_sample(request: HttpRequest, sample_id: int):
 def sample_experiments(request: HttpRequest, sample_id: int):
     """Per-experiment-type rollup for one sample's wafer detail page.
 
-    For each experiment_type required by the sample's parent request,
-    inspects dispatches across this sample's WIPs and returns the
+    For each experiment_type selected for this wafer, inspects dispatches
+    across this sample's WIPs and returns the
     status, dispatch_id, and (when done) the result. INTEGRATION_GAPS
     §2.8 resolution A — saves the SPA three extra requests per wafer
     detail open.
@@ -763,9 +763,20 @@ def sample_experiments(request: HttpRequest, sample_id: int):
     if sample is None:
         return 404, {"detail": "Not found"}
 
-    request_experiments = sample.request.request_experiments.select_related(
-        "experiment_type"
-    ).order_by("experiment_type__name")
+    sample_experiments = list(
+        sample.sample_experiments.select_related("experiment_type").order_by(
+            "experiment_type__name"
+        )
+    )
+    if sample_experiments:
+        experiment_types = [se.experiment_type for se in sample_experiments]
+    else:
+        experiment_types = [
+            re.experiment_type
+            for re in sample.request.request_experiments.select_related(
+                "experiment_type"
+            ).order_by("experiment_type__name")
+        ]
 
     sample_wip_ids = list(sample.wips.values_list("pk", flat=True))
     dispatches_by_et: dict[int, list[Dispatch]] = {}
@@ -787,8 +798,7 @@ def sample_experiments(request: HttpRequest, sample_id: int):
     )
 
     rows = []
-    for re in request_experiments:
-        et = re.experiment_type
+    for et in experiment_types:
         dispatches = dispatches_by_et.get(et.pk, [])
 
         status = "pending"

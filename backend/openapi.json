@@ -5358,7 +5358,7 @@
     },
     "/api/samples/{sample_id}/experiments": {
       "get": {
-        "description": "Per-experiment-type rollup for one sample's wafer detail page.\n\nFor each experiment_type required by the sample's parent request,\ninspects dispatches across this sample's WIPs and returns the\nstatus, dispatch_id, and (when done) the result. INTEGRATION_GAPS\n§2.8 resolution A — saves the SPA three extra requests per wafer\ndetail open.",
+        "description": "Per-experiment-type rollup for one sample's wafer detail page.\n\nFor each experiment_type selected for this wafer, inspects dispatches\nacross this sample's WIPs and returns the\nstatus, dispatch_id, and (when done) the result. INTEGRATION_GAPS\n§2.8 resolution A — saves the SPA three extra requests per wafer\ndetail open.",
         "operationId": "apps_commissions_api_sample_experiments",
         "parameters": [
           {

@@ -831,8 +831,8 @@ export interface paths {
          * Sample Experiments
          * @description Per-experiment-type rollup for one sample's wafer detail page.
          *
-         *     For each experiment_type required by the sample's parent request,
-         *     inspects dispatches across this sample's WIPs and returns the
+         *     For each experiment_type selected for this wafer, inspects dispatches
+         *     across this sample's WIPs and returns the
          *     status, dispatch_id, and (when done) the result. INTEGRATION_GAPS
          *     §2.8 resolution A — saves the SPA three extra requests per wafer
          *     detail open.
