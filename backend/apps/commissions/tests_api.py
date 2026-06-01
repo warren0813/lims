@@ -290,6 +290,136 @@ class TestRequestCreate:
         assert resp.status_code == 201
         assert resp.json()["urgency"] == "1w"
 
+    def test_create_request_stores_per_wafer_experiments(
+        self, client, auth_headers, fab_user
+    ):
+        """Each wafer keeps its own experiment selection — not the union.
+
+        Regression: previously samples carried no experiment association, so
+        every wafer implicitly ran every selected experiment.
+        """
+        from apps.commissions.models import SampleExperiment
+
+        et_cb = ExperimentTypeFactory(name="CB")
+        et_tct = ExperimentTypeFactory(name="TCT")
+        payload = {
+            "title": "Per-wafer selection",
+            "experiment_type_ids": [et_cb.pk, et_tct.pk],
+            "samples": [
+                {
+                    "wafer_id": "WF-A",
+                    "wafer_size": "300mm",
+                    "experiment_type_ids": [et_cb.pk],
+                },
+                {
+                    "wafer_id": "WF-B",
+                    "wafer_size": "300mm",
+                    "experiment_type_ids": [et_tct.pk],
+                },
+            ],
+        }
+        resp = client.post(
+            "/api/requests/",
+            data=payload,
+            content_type="application/json",
+            **auth_headers(fab_user),
+        )
+        assert resp.status_code == 201
+        req = Request.objects.get(pk=resp.json()["id"])
+
+        by_wafer = {s.wafer_id: s for s in req.samples.all()}
+        assert list(by_wafer["WF-A"].experiment_types.values_list("pk", flat=True)) == [
+            et_cb.pk
+        ]
+        assert list(by_wafer["WF-B"].experiment_types.values_list("pk", flat=True)) == [
+            et_tct.pk
+        ]
+        # No cross-product: 2 wafers × distinct single picks → 2 rows, not 4.
+        assert SampleExperiment.objects.filter(sample__request=req).count() == 2
+
+    def test_create_request_detail_round_trips_per_wafer_experiments(
+        self, client, auth_headers, fab_user
+    ):
+        """The detail response exposes each sample's own experiment_type_ids."""
+        et_cb = ExperimentTypeFactory(name="CB")
+        et_tct = ExperimentTypeFactory(name="TCT")
+        payload = {
+            "title": "Round-trip",
+            "experiment_type_ids": [et_cb.pk, et_tct.pk],
+            "samples": [
+                {
+                    "wafer_id": "WF-A",
+                    "wafer_size": "300mm",
+                    "experiment_type_ids": [et_cb.pk],
+                },
+                {
+                    "wafer_id": "WF-B",
+                    "wafer_size": "300mm",
+                    "experiment_type_ids": [et_cb.pk, et_tct.pk],
+                },
+            ],
+        }
+        resp = client.post(
+            "/api/requests/",
+            data=payload,
+            content_type="application/json",
+            **auth_headers(fab_user),
+        )
+        assert resp.status_code == 201
+        samples = {s["wafer_id"]: s for s in resp.json()["samples"]}
+        assert samples["WF-A"]["experiment_type_ids"] == [et_cb.pk]
+        assert sorted(samples["WF-B"]["experiment_type_ids"]) == sorted(
+            [et_cb.pk, et_tct.pk]
+        )
+
+    def test_create_request_rejects_wafer_experiment_outside_request_set(
+        self, client, auth_headers, fab_user
+    ):
+        """A wafer's experiment_type_ids must be a subset of the request set."""
+        et_cb = ExperimentTypeFactory(name="CB")
+        et_other = ExperimentTypeFactory(name="OTHER")
+        payload = {
+            "title": "Bad subset",
+            "experiment_type_ids": [et_cb.pk],
+            "samples": [
+                {
+                    "wafer_id": "WF-A",
+                    "wafer_size": "300mm",
+                    "experiment_type_ids": [et_other.pk],
+                },
+            ],
+        }
+        resp = client.post(
+            "/api/requests/",
+            data=payload,
+            content_type="application/json",
+            **auth_headers(fab_user),
+        )
+        assert resp.status_code == 400
+
+    def test_create_request_omitted_per_wafer_inherits_full_set(
+        self, client, auth_headers, fab_user
+    ):
+        """Omitting per-wafer ids inherits the request set (legacy behaviour)."""
+        et_cb = ExperimentTypeFactory(name="CB")
+        et_tct = ExperimentTypeFactory(name="TCT")
+        payload = {
+            "title": "Inherit",
+            "experiment_type_ids": [et_cb.pk, et_tct.pk],
+            "samples": [{"wafer_id": "WF-A", "wafer_size": "300mm"}],
+        }
+        resp = client.post(
+            "/api/requests/",
+            data=payload,
+            content_type="application/json",
+            **auth_headers(fab_user),
+        )
+        assert resp.status_code == 201
+        sample = Request.objects.get(pk=resp.json()["id"]).samples.get()
+        assert sorted(sample.experiment_types.values_list("pk", flat=True)) == sorted(
+            [et_cb.pk, et_tct.pk]
+        )
+
 
 @pytest.mark.django_db
 class TestRequestDetail:

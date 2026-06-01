@@ -32,13 +32,20 @@ class ExperimentTypeWithParamsOut(Schema):
     parameters: dict[str, Any]
 
 
-class SampleBriefOut(Schema):
-    """Brief sample info nested in request responses."""
+class RequestSampleBriefOut(Schema):
+    """Brief sample info nested in request detail responses.
+
+    Distinct from ``apps.wip.schemas.SampleBriefOut`` — these two used to share
+    the class name ``SampleBriefOut``, which collided in the OpenAPI component
+    registry (only one survived, silently mistyping the other in the generated
+    frontend client). Keep this name unique.
+    """
 
     id: int
     wafer_id: str
     wafer_size: str
     status: str
+    experiment_type_ids: list[int] = []
 
 
 class ApprovalLogOut(Schema):
@@ -61,10 +68,18 @@ class RequestSummaryOut(Schema):
 
 
 class SampleIn(Schema):
-    """Input for a single sample when creating a request."""
+    """Input for a single sample when creating a request.
+
+    ``experiment_type_ids`` is the per-wafer experiment selection. It must be a
+    subset of the request-level ``experiment_type_ids``. When omitted (None),
+    the wafer inherits the full request-level set — preserving the legacy
+    "every wafer runs every experiment" behaviour for callers that don't care
+    about per-wafer selection (e.g. the legacy SSR form).
+    """
 
     wafer_id: str = Field(..., min_length=1, max_length=100)
     wafer_size: WaferSize
+    experiment_type_ids: list[int] | None = None
 
 
 # --- Request input schemas ---
@@ -174,7 +189,7 @@ class RequestDetailOut(Schema):
     urgency: str
     note: str
     experiment_types: list[ExperimentTypeWithParamsOut]
-    samples: list[SampleBriefOut]
+    samples: list[RequestSampleBriefOut]
     approval_logs: list[ApprovalLogOut]
     submitted_at: datetime | None
     completed_at: datetime | None
@@ -203,6 +218,9 @@ class RequestDetailOut(Schema):
                 "wafer_id": s.wafer_id,
                 "wafer_size": s.wafer_size,
                 "status": s.status,
+                "experiment_type_ids": [
+                    se.experiment_type_id for se in s.sample_experiments.all()
+                ],
             }
             for s in req.samples.all()
         ]

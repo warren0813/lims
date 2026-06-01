@@ -105,6 +105,11 @@ class Sample(models.Model):
     )
     wafer_id = models.CharField(max_length=100)
     wafer_size = models.CharField(max_length=10, choices=WaferSize.choices)
+    experiment_types = models.ManyToManyField(
+        "experiments.ExperimentType",
+        through="SampleExperiment",
+        related_name="samples",
+    )
     status = models.CharField(
         max_length=30,
         choices=SampleStatus.choices,
@@ -125,6 +130,31 @@ class Sample(models.Model):
 
     def __str__(self) -> str:
         return f"{self.wafer_id} ({self.status})"
+
+
+class SampleExperiment(models.Model):
+    """Through model linking a sample to the experiment types chosen *for that
+    wafer* at request creation.
+
+    This is the per-wafer experiment selection — distinct from
+    ``RequestExperiment`` (request-level union + per-experiment parameters).
+    Without it, every wafer in a request implicitly inherited the union of all
+    selected experiments (all wafers ran every experiment).
+    """
+
+    sample = models.ForeignKey(
+        Sample, on_delete=models.CASCADE, related_name="sample_experiments"
+    )
+    experiment_type = models.ForeignKey(
+        "experiments.ExperimentType", on_delete=models.PROTECT
+    )
+
+    class Meta:
+        db_table = "sample_experiment"
+        unique_together = ("sample", "experiment_type")
+
+    def __str__(self) -> str:
+        return f"Sample #{self.sample_id} – {self.experiment_type_id}"
 
 
 class ApprovalLog(models.Model):

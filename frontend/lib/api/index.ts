@@ -238,6 +238,7 @@ function normalizeRequestDetail(r: RequestDetailInput) {
       size: s.wafer_size,
       status: SAMPLE_STATUS_MAP[s.status] || s.status,
       raw_status: s.status,
+      expIds: s.experiment_type_ids || [],
     })),
     history: (r.approval_logs || []).map((log) => ({
       action: log.action.toUpperCase(),
