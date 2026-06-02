@@ -22,3 +22,22 @@ test('emits one cubic segment per gap and ends at the last point', () => {
   assert.equal((d.match(/C/g) || []).length, 2); // 3 points -> 2 segments
   assert.ok(d.endsWith('20,0'));
 });
+
+const yCoordinates = (path) =>
+  [...path.matchAll(/-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?/g)].map((match) =>
+    Number(match[0].split(',')[1]),
+  );
+
+test('clamps smoothed control points inside the requested y bounds', () => {
+  const path = smoothPath(
+    [
+      [0, 24],
+      [10, 184],
+      [20, 184],
+      [30, 24],
+    ],
+    { yMin: 24, yMax: 184 },
+  );
+
+  assert.ok(yCoordinates(path).every((y) => y >= 24 && y <= 184));
+});

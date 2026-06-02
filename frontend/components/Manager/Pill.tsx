@@ -5,23 +5,26 @@ const Pill = ({
   kind,
   mapping = STATUS_LABEL as Record<string, { label: string; bg: string; fg: string }>,
   dotted = false,
+  size = 'sm',
 }: {
   kind: string;
   mapping?: Record<string, { label: string; bg: string; fg: string }>;
   dotted?: boolean;
+  size?: string;
 }) => {
   const p = mapping[kind] || { label: kind, bg: '#ebebf0', fg: '#5a5a6e' };
+  const medium = size === 'md';
   return (
     <span
       style={{
         display: 'inline-flex',
         alignItems: 'center',
         gap: 6,
-        padding: '3px 9px',
+        padding: medium ? '4px 10px' : '3px 9px',
         borderRadius: 999,
         background: p.bg,
         color: p.fg,
-        fontSize: 11.5,
+        fontSize: medium ? 12 : 11.5,
         fontWeight: 700,
         letterSpacing: '0.02em',
         whiteSpace: 'nowrap',

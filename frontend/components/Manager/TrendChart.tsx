@@ -8,20 +8,26 @@ import { lineSoft as mLineSft } from '@/lib/colors';
 import { ink as mInk } from '@/lib/colors';
 import { bgSoft as mBgSoft } from '@/lib/colors';
 import { text2 as mText2 } from '@/lib/colors';
+import getTrendTickIndexes from '@/components/Manager/utils/trendTicks';
+
+const clampMetric = (
+  value: number | null | undefined,
+  min: number,
+  max = Number.POSITIVE_INFINITY,
+) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, value));
+};
 
 const TrendChart = () => {
-  const { data: trend, loading, error } = useMgrTrend('requests_per_day', 30);
+  const { data: trend, loading, error } = useMgrTrend('equipment_utilization_per_day', 30);
   const days = React.useMemo(() => {
     const points = trend?.points || [];
     const arr: { date: string; dispatches: number; utilization: number }[] = points.map((p) => ({
       date: p.date,
-      dispatches: p.count,
-      utilization: 0,
+      dispatches: clampMetric(p.count, 0),
+      utilization: clampMetric(p.utilization_pct, 0, 100),
     }));
-    for (let i = 0; i < arr.length; i++) {
-      const prev = i > 0 ? arr[i - 1].dispatches : 0;
-      arr[i].utilization = Math.min(100, (arr[i].dispatches * 0.6 + prev * 0.4) * 24);
-    }
     return arr;
   }, [trend]);
   if (loading && !trend) {
@@ -77,18 +83,20 @@ const TrendChart = () => {
   const yUtil = (v: number) => PT + chartH - (v / 100) * chartH;
   const dispatchPts = days.map((d, i) => [x(i), yDispatch(d.dispatches)] as [number, number]);
   const utilPts = days.map((d, i) => [x(i), yUtil(d.utilization)] as [number, number]);
-  const dispatchPath = smoothPath(dispatchPts);
-  const utilPath = smoothPath(utilPts);
   const baselineY = PT + chartH;
+  const pathBounds = { yMin: PT, yMax: baselineY };
+  const dispatchPath = smoothPath(dispatchPts, pathBounds);
+  const utilPath = smoothPath(utilPts, pathBounds);
   const areaPath = (pts: [number, number][]) =>
     pts.length
-      ? smoothPath(pts) + ` L ${pts[pts.length - 1][0]},${baselineY} L ${pts[0][0]},${baselineY} Z`
+      ? smoothPath(pts, pathBounds) +
+        ` L ${pts[pts.length - 1][0]},${baselineY} L ${pts[0][0]},${baselineY} Z`
       : '';
-  const tickStep = days.length > 14 ? Math.ceil(days.length / 8) : 2;
+  const visibleTickIndexes = new Set(getTrendTickIndexes(days.length));
   const ticks = days.map((d, i) => ({
     i,
     label: d.date.slice(5).replace('-', '/'),
-    show: i === 0 || i === days.length - 1 || i % tickStep === 0,
+    show: visibleTickIndexes.has(i),
   }));
   return (
     <Card padding={0} style={{ marginTop: 18 }}>
@@ -181,6 +189,9 @@ const TrendChart = () => {
               <stop offset="0%" stopColor="#6c67b8" stopOpacity="0.16" />
               <stop offset="100%" stopColor="#6c67b8" stopOpacity="0" />
             </linearGradient>
+            <clipPath id="trendPlotClip">
+              <rect x={PL} y={PT} width={chartW} height={chartH} />
+            </clipPath>
           </defs>
 
           {}
@@ -217,25 +228,27 @@ const TrendChart = () => {
           ))}
 
           {}
-          <path d={areaPath(dispatchPts)} fill="url(#dispFill)" />
-          <path d={areaPath(utilPts)} fill="url(#utilFill)" />
-          {}
-          <path
-            d={dispatchPath}
-            fill="none"
-            stroke="#2563eb"
-            strokeWidth="2"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-          <path
-            d={utilPath}
-            fill="none"
-            stroke="#6c67b8"
-            strokeWidth="2"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
+          <g clipPath="url(#trendPlotClip)">
+            <path d={areaPath(dispatchPts)} fill="url(#dispFill)" />
+            <path d={areaPath(utilPts)} fill="url(#utilFill)" />
+            {}
+            <path
+              d={dispatchPath}
+              fill="none"
+              stroke="#2563eb"
+              strokeWidth="2"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+            <path
+              d={utilPath}
+              fill="none"
+              stroke="#6c67b8"
+              strokeWidth="2"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          </g>
 
           {}
           {ticks.map(

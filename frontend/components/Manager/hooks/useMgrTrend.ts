@@ -2,7 +2,7 @@
 import React from 'react';
 import api from '@/lib/api';
 
-type TrendPoint = { date: string; count: number };
+type TrendPoint = { date: string; count: number; utilization_pct?: number | null };
 type TrendData = { metric: string; days: number; points: TrendPoint[] };
 
 const useMgrTrend = (metric = 'requests_per_day', days = 30) => {

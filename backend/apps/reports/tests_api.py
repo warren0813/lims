@@ -1,14 +1,40 @@
 """API tests for the reports app (equipment utilization and request statistics)."""
 
+from datetime import datetime, timedelta
+
 import pytest
 from django.test import Client
+from django.utils import timezone
 
 from apps.accounts.factories import FabUserFactory, LabManagerFactory, LabStaffFactory
-from apps.commissions.factories import RequestFactory
+from apps.commissions.factories import (
+    RequestExperimentFactory,
+    RequestFactory,
+    SampleFactory,
+)
 from apps.commissions.models import RequestStatus
-from apps.equipment.factories import EquipmentFactory
-from apps.wip.factories import DispatchFactory, WIPFactory
+from apps.equipment.factories import EquipmentFactory, RecipeFactory
+from apps.experiments.factories import ExperimentTypeFactory
+from apps.wip.factories import (
+    DispatchFactory,
+    ExperimentResultFactory,
+    SampleExperimentStatusFactory,
+    WIPFactory,
+)
 from apps.wip.models import DispatchStatus
+
+
+def _dt(year, month, day, hour=0, minute=0):
+    return timezone.make_aware(datetime(year, month, day, hour, minute))
+
+
+def _set_dispatch_window(dispatch, start, end):
+    type(dispatch).objects.filter(pk=dispatch.pk).update(
+        dispatched_at=start,
+        completed_at=end,
+    )
+    dispatch.refresh_from_db()
+    return dispatch
 
 
 @pytest.fixture
@@ -61,8 +87,20 @@ class TestEquipmentUtilization:
         """Lab manager can access the endpoint and get valid utilization data."""
         equipment = EquipmentFactory()
         wip = WIPFactory()
-        DispatchFactory(wip=wip, equipment=equipment, status=DispatchStatus.COMPLETED)
-        DispatchFactory(wip=wip, equipment=equipment, status=DispatchStatus.COMPLETED)
+        _set_dispatch_window(
+            DispatchFactory(
+                wip=wip, equipment=equipment, status=DispatchStatus.COMPLETED
+            ),
+            _dt(2026, 1, 1, 1),
+            _dt(2026, 1, 1, 2),
+        )
+        _set_dispatch_window(
+            DispatchFactory(
+                wip=wip, equipment=equipment, status=DispatchStatus.COMPLETED
+            ),
+            _dt(2026, 1, 1, 3),
+            _dt(2026, 1, 1, 4),
+        )
 
         params = "?period=week&start_date=2000-01-01&end_date=2099-12-31"
         resp = client.get(
@@ -83,7 +121,9 @@ class TestEquipmentUtilization:
         )
         assert entry is not None
         assert entry["equipment"]["name"] == equipment.name
-        assert entry["wip_count"] == 2
+        assert entry["dispatch_count"] == 2
+        assert entry["wip_count"] == 1
+        assert entry["busy_seconds"] == 7200.0
 
     def test_fab_user_forbidden(self, client, auth_headers, fab_user):
         """Non-lab-manager users receive a 403 response."""
@@ -144,16 +184,36 @@ class TestEquipmentUtilization:
         data = resp.json()
         assert data["data"] == []
 
-    def test_sample_count_counts_distinct_wips(self, client, auth_headers, lab_manager):
-        """sample_count reflects the number of distinct WIPs (each WIP = 1 sample)."""
+    def test_sample_count_counts_distinct_samples(
+        self, client, auth_headers, lab_manager
+    ):
+        """sample_count reflects distinct samples attached to matching WIPs."""
         equipment = EquipmentFactory()
-        wip_a = WIPFactory()
-        wip_b = WIPFactory()
+        wip_a = WIPFactory(samples=[SampleFactory()])
+        wip_b = WIPFactory(samples=[SampleFactory()])
         # Two dispatches on the same WIP — should count as 1 unique WIP/sample
-        DispatchFactory(wip=wip_a, equipment=equipment, status=DispatchStatus.COMPLETED)
-        DispatchFactory(wip=wip_a, equipment=equipment, status=DispatchStatus.COMPLETED)
+        _set_dispatch_window(
+            DispatchFactory(
+                wip=wip_a, equipment=equipment, status=DispatchStatus.COMPLETED
+            ),
+            _dt(2026, 1, 1, 1),
+            _dt(2026, 1, 1, 2),
+        )
+        _set_dispatch_window(
+            DispatchFactory(
+                wip=wip_a, equipment=equipment, status=DispatchStatus.COMPLETED
+            ),
+            _dt(2026, 1, 1, 3),
+            _dt(2026, 1, 1, 4),
+        )
         # One dispatch on a different WIP
-        DispatchFactory(wip=wip_b, equipment=equipment, status=DispatchStatus.COMPLETED)
+        _set_dispatch_window(
+            DispatchFactory(
+                wip=wip_b, equipment=equipment, status=DispatchStatus.COMPLETED
+            ),
+            _dt(2026, 1, 1, 5),
+            _dt(2026, 1, 1, 6),
+        )
 
         params = "?period=week&start_date=2000-01-01&end_date=2099-12-31"
         resp = client.get(
@@ -165,8 +225,109 @@ class TestEquipmentUtilization:
         entry = next(
             e for e in resp.json()["data"] if e["equipment"]["id"] == equipment.pk
         )
-        assert entry["wip_count"] == 3
+        assert entry["dispatch_count"] == 3
+        assert entry["wip_count"] == 2
         assert entry["sample_count"] == 2
+
+    def test_utilization_uses_busy_time_ratio(self, client, auth_headers, lab_manager):
+        equipment = EquipmentFactory()
+        dispatch = DispatchFactory(equipment=equipment, status=DispatchStatus.COMPLETED)
+        _set_dispatch_window(dispatch, _dt(2026, 1, 1, 0), _dt(2026, 1, 1, 12))
+
+        resp = client.get(
+            self.URL + "?period=day&start_date=2026-01-01&end_date=2026-01-01",
+            **auth_headers(lab_manager),
+        )
+
+        entry = next(
+            e for e in resp.json()["data"] if e["equipment"]["id"] == equipment.pk
+        )
+        assert entry["busy_seconds"] == 12 * 3600
+        assert entry["available_seconds"] == 12 * 3600
+        assert entry["utilization_pct"] == 50.0
+
+    def test_overlapping_dispatches_are_not_double_counted(
+        self, client, auth_headers, lab_manager
+    ):
+        equipment = EquipmentFactory()
+        first = DispatchFactory(equipment=equipment, status=DispatchStatus.COMPLETED)
+        second = DispatchFactory(equipment=equipment, status=DispatchStatus.COMPLETED)
+        _set_dispatch_window(first, _dt(2026, 1, 1, 0), _dt(2026, 1, 1, 12))
+        _set_dispatch_window(second, _dt(2026, 1, 1, 6), _dt(2026, 1, 1, 18))
+
+        resp = client.get(
+            self.URL + "?period=day&start_date=2026-01-01&end_date=2026-01-01",
+            **auth_headers(lab_manager),
+        )
+
+        entry = next(
+            e for e in resp.json()["data"] if e["equipment"]["id"] == equipment.pk
+        )
+        assert entry["busy_seconds"] == 18 * 3600
+        assert entry["utilization_pct"] == 75.0
+
+    def test_dispatch_crossing_window_is_clamped_to_selected_dates(
+        self, client, auth_headers, lab_manager
+    ):
+        equipment = EquipmentFactory()
+        dispatch = DispatchFactory(equipment=equipment, status=DispatchStatus.COMPLETED)
+        _set_dispatch_window(dispatch, _dt(2025, 12, 31, 12), _dt(2026, 1, 2, 12))
+
+        resp = client.get(
+            self.URL + "?period=day&start_date=2026-01-01&end_date=2026-01-01",
+            **auth_headers(lab_manager),
+        )
+
+        entry = next(
+            e for e in resp.json()["data"] if e["equipment"]["id"] == equipment.pk
+        )
+        assert entry["busy_seconds"] == 24 * 3600
+        assert entry["available_seconds"] == 0.0
+        assert entry["utilization_pct"] == 100.0
+
+    def test_running_dispatch_counts_as_busy_until_window_end(
+        self, client, auth_headers, lab_manager
+    ):
+        equipment = EquipmentFactory()
+        dispatch = DispatchFactory(equipment=equipment, status=DispatchStatus.RUNNING)
+        type(dispatch).objects.filter(pk=dispatch.pk).update(
+            dispatched_at=_dt(2026, 1, 1, 12),
+            completed_at=None,
+        )
+
+        resp = client.get(
+            self.URL + "?period=day&start_date=2026-01-01&end_date=2026-01-01",
+            **auth_headers(lab_manager),
+        )
+
+        entry = next(
+            e for e in resp.json()["data"] if e["equipment"]["id"] == equipment.pk
+        )
+        assert entry["busy_seconds"] == 12 * 3600
+        assert entry["utilization_pct"] == 50.0
+
+    def test_unused_equipment_is_returned_with_zero_utilization(
+        self, client, auth_headers, lab_manager
+    ):
+        equipment = EquipmentFactory()
+
+        resp = client.get(
+            self.URL + "?period=day&start_date=2026-01-01&end_date=2026-01-01",
+            **auth_headers(lab_manager),
+        )
+
+        entry = next(
+            e for e in resp.json()["data"] if e["equipment"]["id"] == equipment.pk
+        )
+        assert entry["busy_seconds"] == 0.0
+        assert entry["utilization_pct"] == 0.0
+
+    def test_invalid_date_range_returns_400(self, client, auth_headers, lab_manager):
+        resp = client.get(
+            self.URL + "?period=custom&start_date=2026-01-02&end_date=2026-01-01",
+            **auth_headers(lab_manager),
+        )
+        assert resp.status_code == 400
 
     def test_unauthenticated_returns_401(self, client):
         """Unauthenticated request returns 401."""
@@ -208,6 +369,38 @@ class TestRequestStatistics:
         assert data["status_distribution"].get("draft", 0) >= 2
         assert data["status_distribution"].get("in_progress", 0) >= 1
         assert data["total_requests"] >= 3
+        assert isinstance(data["requests"], list)
+
+    def test_response_includes_clickable_request_rows(
+        self, client, auth_headers, lab_manager
+    ):
+        """The report includes per-request rows for manager drill-down."""
+        exp = ExperimentTypeFactory(name="Temperature Cycling Test")
+        req = RequestFactory(
+            title="Reliability qualification",
+            status=RequestStatus.COMPLETED,
+            requester=lab_manager,
+        )
+        RequestExperimentFactory(request=req, experiment_type=exp)
+        SampleFactory(request=req)
+        SampleFactory(request=req)
+
+        params = "?start_date=2000-01-01&end_date=2099-12-31"
+        resp = client.get(
+            self.URL + params,
+            **auth_headers(lab_manager),
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        row = next(r for r in data["requests"] if r["id"] == req.pk)
+        assert row["title"] == "Reliability qualification"
+        assert row["status"] == RequestStatus.COMPLETED
+        assert row["requester"] == lab_manager.username
+        assert row["sample_count"] == 2
+        assert row["experiment_types"] == ["Temperature Cycling Test"]
+        assert row["created_at"]
+        assert row["updated_at"]
 
     def test_fab_user_forbidden(self, client, auth_headers, fab_user):
         """Non-lab-manager users receive a 403 response."""
@@ -297,6 +490,103 @@ class TestRequestStatistics:
 
 
 # =============================================================================
+# Dispatch Results tests
+# =============================================================================
+
+
+@pytest.mark.django_db
+class TestDispatchResults:
+    """Tests for GET /api/reports/dispatch-results."""
+
+    URL = "/api/reports/dispatch-results"
+
+    def test_lab_manager_can_query_dispatch_result_rows(
+        self, client, auth_headers, lab_manager
+    ):
+        experiment_type = ExperimentTypeFactory()
+        sample = SampleFactory()
+        wip = WIPFactory(experiment_type=experiment_type, samples=[sample])
+        equipment = EquipmentFactory()
+        recipe = RecipeFactory(experiment_type=experiment_type)
+        dispatch = DispatchFactory(
+            wip=wip,
+            experiment_type=experiment_type,
+            equipment=equipment,
+            recipe=recipe,
+            status=DispatchStatus.COMPLETED,
+            created_by=lab_manager,
+        )
+        _set_dispatch_window(dispatch, _dt(2026, 1, 2, 8), _dt(2026, 1, 2, 12))
+        ExperimentResultFactory(dispatch=dispatch, comment="Run completed cleanly.")
+        SampleExperimentStatusFactory(
+            sample=sample,
+            experiment_type=experiment_type,
+            dispatch=dispatch,
+            status="completed",
+            verdict="pass",
+        )
+
+        resp = client.get(
+            self.URL + "?start_date=2026-01-02&end_date=2026-01-02",
+            **auth_headers(lab_manager),
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["period"] == {
+            "start_date": "2026-01-02",
+            "end_date": "2026-01-02",
+        }
+        row = data["data"][0]
+        assert row["id"] == dispatch.pk
+        assert row["wip_id"] == wip.pk
+        assert row["status"] == DispatchStatus.COMPLETED
+        assert row["equipment"] == {"id": equipment.pk, "name": equipment.name}
+        assert row["recipe"] == {"id": recipe.pk, "name": recipe.name}
+        assert row["request_ids"] == [sample.request_id]
+        assert row["request_titles"] == [sample.request.title]
+        assert row["sample_count"] == 1
+        assert row["pass_count"] == 1
+        assert row["fail_count"] == 0
+        assert row["operator"] == lab_manager.username
+        assert row["duration_seconds"] == 4 * 3600
+        assert row["result_comment"] == "Run completed cleanly."
+
+    def test_includes_dispatch_created_in_range_without_completion(
+        self, client, auth_headers, lab_manager
+    ):
+        dispatch = DispatchFactory(status=DispatchStatus.PENDING)
+        type(dispatch).objects.filter(pk=dispatch.pk).update(
+            created_at=_dt(2026, 1, 2, 8),
+            dispatched_at=None,
+            completed_at=None,
+        )
+
+        resp = client.get(
+            self.URL + "?start_date=2026-01-02&end_date=2026-01-02",
+            **auth_headers(lab_manager),
+        )
+
+        assert resp.status_code == 200
+        assert [row["id"] for row in resp.json()["data"]] == [dispatch.pk]
+        assert resp.json()["data"][0]["duration_seconds"] is None
+
+    def test_non_manager_forbidden(self, client, auth_headers, lab_staff):
+        resp = client.get(
+            self.URL + "?start_date=2026-01-01&end_date=2026-01-02",
+            **auth_headers(lab_staff),
+        )
+        assert resp.status_code == 403
+
+    def test_invalid_date_range_returns_400(self, client, auth_headers, lab_manager):
+        resp = client.get(
+            self.URL + "?start_date=2026-01-02&end_date=2026-01-01",
+            **auth_headers(lab_manager),
+        )
+        assert resp.status_code == 400
+
+
+# =============================================================================
 # Trends tests
 # =============================================================================
 
@@ -358,6 +648,32 @@ class TestTrends:
     def test_unknown_metric_returns_400(self, client, auth_headers, lab_manager):
         resp = client.get(self.URL + "?metric=bogus", **auth_headers(lab_manager))
         assert resp.status_code == 400
+
+    def test_equipment_utilization_per_day_uses_busy_time(
+        self, client, auth_headers, lab_manager
+    ):
+        equipment = EquipmentFactory()
+        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        dispatch = DispatchFactory(equipment=equipment, status=DispatchStatus.COMPLETED)
+        _set_dispatch_window(
+            dispatch,
+            today_start,
+            today_start + timedelta(hours=12),
+        )
+
+        resp = client.get(
+            self.URL + "?metric=equipment_utilization_per_day&days=1",
+            **auth_headers(lab_manager),
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["points"] == [
+            {
+                "date": today_start.date().isoformat(),
+                "count": 1,
+                "utilization_pct": 50.0,
+            }
+        ]
 
     def test_lab_staff_forbidden(self, client, auth_headers, lab_staff):
         resp = client.get(

@@ -25,14 +25,22 @@
     <thead>
       <tr>
         <th style="text-align:left; padding:8px; border-bottom:2px solid #ddd;">{% trans "Equipment" %}</th>
-        <th style="text-align:right; padding:8px; border-bottom:2px solid #ddd;">{% trans "Dispatch Count" %}</th>
-        <th style="text-align:right; padding:8px; border-bottom:2px solid #ddd;">{% trans "Sample Count" %}</th>
+        <th style="text-align:right; padding:8px; border-bottom:2px solid #ddd;">{% trans "Busy Hours" %}</th>
+        <th style="text-align:right; padding:8px; border-bottom:2px solid #ddd;">{% trans "Available Hours" %}</th>
+        <th style="text-align:right; padding:8px; border-bottom:2px solid #ddd;">{% trans "Utilization" %}</th>
+        <th style="text-align:right; padding:8px; border-bottom:2px solid #ddd;">{% trans "Dispatches" %}</th>
+        <th style="text-align:right; padding:8px; border-bottom:2px solid #ddd;">{% trans "WIPs" %}</th>
+        <th style="text-align:right; padding:8px; border-bottom:2px solid #ddd;">{% trans "Samples" %}</th>
       </tr>
     </thead>
     <tbody>
       {% for row in rows %}
       <tr>
-        <td style="padding:8px; border-bottom:1px solid #eee;">{{ row.equipment__name }}</td>
+        <td style="padding:8px; border-bottom:1px solid #eee;">{{ row.equipment.name }}</td>
+        <td style="text-align:right; padding:8px; border-bottom:1px solid #eee;">{% widthratio row.busy_seconds 3600 1 %}</td>
+        <td style="text-align:right; padding:8px; border-bottom:1px solid #eee;">{% widthratio row.available_seconds 3600 1 %}</td>
+        <td style="text-align:right; padding:8px; border-bottom:1px solid #eee;">{{ row.utilization_pct }}%</td>
+        <td style="text-align:right; padding:8px; border-bottom:1px solid #eee;">{{ row.dispatch_count }}</td>
         <td style="text-align:right; padding:8px; border-bottom:1px solid #eee;">{{ row.wip_count }}</td>
         <td style="text-align:right; padding:8px; border-bottom:1px solid #eee;">{{ row.sample_count }}</td>
       </tr>
