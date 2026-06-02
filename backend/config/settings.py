@@ -68,6 +68,34 @@ else:
     CORS_ALLOWED_ORIGINS = []
 
 
+# ── Email / failure notifications ────────────────────────────────────────────
+# Dev default is the console backend (emails print to stdout) so the
+# failure-notification path is exercised without real SMTP credentials.
+# Set EMAIL_BACKEND + the SMTP vars in the environment for real delivery.
+EMAIL_BACKEND = os.environ.get(
+    "EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"
+)
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "localhost")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "25"))
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "False") == "True"
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "lims@example.com")
+
+# Probability (0..1) that a finishing simulated dispatch fails with an
+# execution exception instead of completing. Drives the run-level failure
+# roll in apps.wip.services.roll_dispatch_outcome.
+DISPATCH_FAILURE_RATE = float(os.environ.get("DISPATCH_FAILURE_RATE", "0.15"))
+
+# Recipients for dispatch-failure notifications. Comma-separated; empty
+# disables sending (the notify helper logs and skips).
+DISPATCH_FAILURE_NOTIFY_EMAILS = [
+    addr.strip()
+    for addr in os.environ.get("DISPATCH_FAILURE_NOTIFY_EMAILS", "").split(",")
+    if addr.strip()
+]
+
+
 # Application definition
 
 INSTALLED_APPS = [

@@ -12,6 +12,7 @@ on the WIP / Dispatch being mutated.
 import random
 from datetime import datetime, timedelta
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import transaction
 from django.utils import timezone
@@ -34,6 +35,7 @@ from apps.wip.models import (
     SampleExperimentVerdict,
     WIPStatus,
 )
+from apps.wip.notifications import notify_dispatch_failure
 from apps.wip.state_machine import (
     InvalidTransitionError,
     validate_dispatch_transition,
@@ -66,10 +68,38 @@ VERDICT_WEIGHTS = (0.8, 0.2)
 AUTO_COMPLETE_MIN_SECONDS = 3.0
 AUTO_COMPLETE_MAX_SECONDS = 5.0
 
+# Run-level outcome roll for a finishing simulated dispatch — distinct from
+# the per-wafer verdict roll above. With probability settings.DISPATCH_FAILURE_RATE
+# the run lands in EXECUTION_EXCEPTION (machine failure) instead of COMPLETED.
+# The rate is a setting so deployments tune it via env and tests pin it
+# deterministically via override_settings; the test suite default is 0.0
+# (see conftest) so existing auto-complete tests stay deterministic.
+DISPATCH_OUTCOME_COMPLETE = "complete"
+DISPATCH_OUTCOME_FAIL = "fail"
+
 
 def random_verdict() -> str:
     """Roll a per-wafer verdict — 80% pass / 20% fail."""
     return random.choices(VERDICT_CHOICES, weights=VERDICT_WEIGHTS, k=1)[0]
+
+
+def roll_dispatch_outcome() -> str:
+    """Roll whether a finishing simulated run completes cleanly or fails.
+
+    Returns DISPATCH_OUTCOME_FAIL with probability
+    ``settings.DISPATCH_FAILURE_RATE`` (clamped to [0, 1]), else
+    DISPATCH_OUTCOME_COMPLETE. A rate <= 0 short-circuits without touching
+    the RNG, so the default test configuration is fully deterministic.
+    """
+    rate = float(getattr(settings, "DISPATCH_FAILURE_RATE", 0.0))
+    if rate <= 0:
+        return DISPATCH_OUTCOME_COMPLETE
+    rate = min(rate, 1.0)
+    return random.choices(
+        (DISPATCH_OUTCOME_COMPLETE, DISPATCH_OUTCOME_FAIL),
+        weights=(1.0 - rate, rate),
+        k=1,
+    )[0]
 
 
 def roll_auto_complete_at(now: datetime | None = None) -> datetime:
@@ -359,6 +389,38 @@ def complete_dispatch_run(
     maybe_auto_complete_wip(wip)
 
 
+def fail_dispatch_run(
+    dispatch: Dispatch,
+    *,
+    note: str = "Simulated machine reported an execution exception.",
+    now: datetime | None = None,
+) -> None:
+    """Drive a DISPATCHED/RUNNING dispatch into EXECUTION_EXCEPTION,
+    mirroring the manual report-exception flow, then fire the failure
+    notification email.
+
+    Unlike complete_dispatch_run this records no ExperimentResult and rolls
+    no per-wafer verdicts — an execution exception produced no valid result.
+    The WIP is intentionally NOT auto-completed: an all-exception WIP waits
+    for an operator to redispatch or abort (see maybe_auto_complete_wip,
+    whose terminal set excludes EXECUTION_EXCEPTION).
+
+    Caller must hold a select_for_update lock on ``dispatch`` inside an active
+    transaction. Raises InvalidTransitionError if ``dispatch`` is not in a
+    DISPATCHED/RUNNING state. The notification send is best-effort and never
+    raises (see notify_dispatch_failure).
+
+    ``now`` is accepted for signature parity with complete_dispatch_run; the
+    exception path stamps no completion timestamp, so it is currently unused.
+    """
+    target = validate_dispatch_transition(dispatch.status, "report_exception")
+    dispatch.status = target
+    if note:
+        dispatch.note = f"{dispatch.note}\n[Exception] {note}".strip()
+    dispatch.save(update_fields=["status", "note", "updated_at"])
+    notify_dispatch_failure(dispatch)
+
+
 def finalize_due_dispatches(now: datetime | None = None) -> list[int]:
     """Auto-complete every RUNNING dispatch whose auto_complete_at has elapsed.
 
@@ -368,12 +430,18 @@ def finalize_due_dispatches(now: datetime | None = None) -> list[int]:
     SPA countdown was open to fire the completion. Call it at the top of
     status-reporting read endpoints.
 
+    On finalisation each run rolls roll_dispatch_outcome(): most complete
+    cleanly, but with probability settings.DISPATCH_FAILURE_RATE the run
+    instead lands in EXECUTION_EXCEPTION (simulated machine failure) and
+    emails the configured recipients. Both outcomes are terminal for this
+    call, so the returned ids cover completed *and* failed runs.
+
     Idempotent and cheap when nothing is due (one indexed query, no writes).
-    Each due dispatch is completed in its own locked transaction, then
+    Each due dispatch is finalised in its own locked transaction, then
     re-checked under the row lock — so it is safe against the frontend timer,
     a concurrent reader, or another finalize call racing to finish the same
     run: the loser sees status != running (or a future deadline) and skips.
-    Returns the ids this call completed.
+    Returns the ids this call finalised (completed or failed).
     """
     now = now or timezone.now()
     due_ids = list(
@@ -383,7 +451,7 @@ def finalize_due_dispatches(now: datetime | None = None) -> list[int]:
             auto_complete_at__lte=now,
         ).values_list("pk", flat=True)
     )
-    completed: list[int] = []
+    finalized: list[int] = []
     for dispatch_id in due_ids:
         with transaction.atomic():
             try:
@@ -403,12 +471,15 @@ def finalize_due_dispatches(now: datetime | None = None) -> list[int]:
             ):
                 continue
             try:
-                complete_dispatch_run(
-                    dispatch,
-                    comment="Auto-completed by simulated machine timer.",
-                    now=now,
-                )
+                if roll_dispatch_outcome() == DISPATCH_OUTCOME_FAIL:
+                    fail_dispatch_run(dispatch, now=now)
+                else:
+                    complete_dispatch_run(
+                        dispatch,
+                        comment="Auto-completed by simulated machine timer.",
+                        now=now,
+                    )
             except InvalidTransitionError:
                 continue
-            completed.append(dispatch_id)
-    return completed
+            finalized.append(dispatch_id)
+    return finalized
