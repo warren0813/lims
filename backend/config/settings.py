@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 
 import dj_database_url
+from django.core.management.utils import get_random_secret_key
 
 from config import observability
 
@@ -24,14 +25,22 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get(
-    "DJANGO_SECRET_KEY",
-    "django-insecure-_1@qswgegj#t^uz(%9o=hzzdjxz!%0!alot*25r4txk6z94zq-",
-)
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "True") == "True"
+
+# SECURITY WARNING: keep the secret key used in production secret!
+# Never hardcode a fallback secret in source. In production the key must be
+# supplied via the environment; in DEBUG we fall back to an ephemeral generated
+# key so local development works without one (sessions/signed values reset on
+# each restart, which is acceptable for dev).
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = get_random_secret_key()
+    else:
+        raise RuntimeError(
+            "DJANGO_SECRET_KEY environment variable must be set when DEBUG is False"
+        )
 
 ALLOWED_HOSTS = (
     os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",")
