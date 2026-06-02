@@ -28,6 +28,95 @@ type ExpRow = {
   result: SampleExperiment['result'];
 };
 const LF = I;
+
+type ExpChipPhase = 'fail' | 'done' | 'running' | 'pending';
+type ExpChipStyle = {
+  phase: ExpChipPhase;
+  bg: string;
+  border: string;
+  badgeBg: string;
+  textCol: string;
+};
+
+const expChipPhase = (e: ExpRow): ExpChipPhase => {
+  const done = e.status === 'done';
+  if (done && e.verdict === 'fail') return 'fail';
+  if (done) return 'done';
+  if (e.status === 'running') return 'running';
+  return 'pending';
+};
+
+const EXP_CHIP_STYLES: Record<ExpChipPhase, Omit<ExpChipStyle, 'phase'>> = {
+  fail: { bg: '#fbe4e6', border: '#f4b4b9', badgeBg: '#a93445', textCol: '#5a1a22' },
+  done: { bg: '#e7f6ec', border: '#9ad9b7', badgeBg: '#157a4a', textCol: '#1f3d2c' },
+  running: { bg: '#ecebf3', border: '#bcb8e2', badgeBg: '#4f4a8f', textCol: ink },
+  pending: { bg: '#f4f4f7', border: 'rgba(0,0,0,0.08)', badgeBg: '#cbcbd6', textCol: '#7a7a8c' },
+};
+
+const expChipStyle = (e: ExpRow): ExpChipStyle => {
+  const phase = expChipPhase(e);
+  return { phase, ...EXP_CHIP_STYLES[phase] };
+};
+
+const ExpChipIcon = ({ phase }: { phase: ExpChipPhase }) => {
+  if (phase === 'fail') return <LF.X size={13} color="#a93445" strokeWidth={3} />;
+  if (phase === 'done') return <LF.Check size={13} color="#157a4a" strokeWidth={3} />;
+  if (phase === 'running') {
+    return (
+      <span
+        style={{
+          width: 9,
+          height: 9,
+          borderRadius: 999,
+          background: '#4f4a8f',
+          animation: 'pulse 1.4s infinite',
+        }}
+      />
+    );
+  }
+  return (
+    <span style={{ width: 13, height: 13, borderRadius: 999, border: '1.5px dashed #cbcbd6' }} />
+  );
+};
+
+const ExperimentChip = ({ e, navigate }: { e: ExpRow; navigate: Navigate }) => {
+  const { phase, bg, border, badgeBg, textCol } = expChipStyle(e);
+  const clickable = e.dispatchId != null;
+  return (
+    <button
+      type="button"
+      disabled={!clickable}
+      onClick={() => clickable && navigate({ page: 'lab_dispatch_detail', id: e.dispatchId })}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 7,
+        padding: '6px 12px 6px 7px',
+        borderRadius: 999,
+        background: bg,
+        border: `1px solid ${border}`,
+        fontFamily: 'inherit',
+        cursor: clickable ? 'pointer' : 'default',
+      }}
+    >
+      <span
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          padding: '3px 7px',
+          borderRadius: 999,
+          background: badgeBg,
+          color: '#fff',
+          letterSpacing: '0.05em',
+        }}
+      >
+        {e.group || '—'}
+      </span>
+      <span style={{ fontSize: 13, fontWeight: 500, color: textCol }}>{e.name}</span>
+      <ExpChipIcon phase={phase} />
+    </button>
+  );
+};
 const LabWaferDetail = ({
   id,
   navigate,
@@ -219,90 +308,9 @@ const LabWaferDetail = ({
                   background: '#fafafd',
                 }}
               >
-                {expRows.map((e: ExpRow) => {
-                  const done = e.status === 'done';
-                  const running = e.status === 'running';
-                  const fail = done && e.verdict === 'fail';
-                  const clickable = e.dispatchId != null;
-                  const bg = fail ? '#fbe4e6' : done ? '#e7f6ec' : running ? '#ecebf3' : '#f4f4f7';
-                  const border = fail
-                    ? '#f4b4b9'
-                    : done
-                      ? '#9ad9b7'
-                      : running
-                        ? '#bcb8e2'
-                        : 'rgba(0,0,0,0.08)';
-                  const badgeBg = fail
-                    ? '#a93445'
-                    : done
-                      ? '#157a4a'
-                      : running
-                        ? '#4f4a8f'
-                        : '#cbcbd6';
-                  const textCol = fail ? '#5a1a22' : done ? '#1f3d2c' : running ? ink : '#7a7a8c';
-                  return (
-                    <button
-                      key={e.id}
-                      type="button"
-                      disabled={!clickable}
-                      onClick={() =>
-                        clickable && navigate({ page: 'lab_dispatch_detail', id: e.dispatchId })
-                      }
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 7,
-                        padding: '6px 12px 6px 7px',
-                        borderRadius: 999,
-                        background: bg,
-                        border: `1px solid ${border}`,
-                        fontFamily: 'inherit',
-                        cursor: clickable ? 'pointer' : 'default',
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: 10,
-                          fontWeight: 700,
-                          padding: '3px 7px',
-                          borderRadius: 999,
-                          background: badgeBg,
-                          color: '#fff',
-                          letterSpacing: '0.05em',
-                        }}
-                      >
-                        {e.group || '\u2014'}
-                      </span>
-                      <span style={{ fontSize: 13, fontWeight: 500, color: textCol }}>
-                        {e.name}
-                      </span>
-                      {fail ? (
-                        <LF.X size={13} color="#a93445" strokeWidth={3} />
-                      ) : done ? (
-                        <LF.Check size={13} color="#157a4a" strokeWidth={3} />
-                      ) : running ? (
-                        <span
-                          style={{
-                            width: 9,
-                            height: 9,
-                            borderRadius: 999,
-                            background: '#4f4a8f',
-                            animation: 'pulse 1.4s infinite',
-                          }}
-                        />
-                      ) : (
-                        <span
-                          style={{
-                            width: 13,
-                            height: 13,
-                            borderRadius: 999,
-                            border: '1.5px dashed #cbcbd6',
-                          }}
-                        />
-                      )}
-                    </button>
-                  );
-                })}
+                {expRows.map((e: ExpRow) => (
+                  <ExperimentChip key={e.id} e={e} navigate={navigate} />
+                ))}
               </div>
             </Card>
           )}
