@@ -12,8 +12,6 @@ import { muted } from '@/lib/colors';
 import FieldLabel from '@/components/Manager/FieldLabel';
 import SelectInput from '@/components/Manager/SelectInput';
 import { lineSoft } from '@/lib/colors';
-import TextInput from '@/components/Manager/TextInput';
-import { accent } from '@/lib/colors';
 import TextArea from '@/components/Manager/TextArea';
 
 type WipShape = { id: number; experimentId: number; experimentName?: string; sampleCount: number };
@@ -34,16 +32,13 @@ const AddDispatchModalInner = ({
   } = useDispatchCreationData(wip.experimentId);
   const [equipmentId, setEquipmentId] = React.useState<string | number>('');
   const [recipeId, setRecipeId] = React.useState<string | number>('');
-  const [duration, setDuration] = React.useState('');
   const [note, setNote] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [submitErr, setSubmitErr] = React.useState(null);
   const selectedRecipe = recipes.find((r) => r.id === recipeId);
   const selectedEquipment = equipment.find((e) => e.id === equipmentId);
   const wipCode = `WIP-${String(wip.id).padStart(4, '0')}`;
-  const durationSec = duration === '' ? null : parseInt(duration, 10);
-  const durationValid = duration === '' || (Number.isFinite(durationSec) && durationSec > 0);
-  const valid = equipmentId !== '' && recipeId !== '' && durationValid && !loading;
+  const valid = equipmentId !== '' && recipeId !== '' && !loading;
   const submit = async () => {
     setBusy(true);
     setSubmitErr(null);
@@ -51,7 +46,6 @@ const AddDispatchModalInner = ({
       await api.wips.createDispatch(wip.id, {
         equipmentId,
         recipeId,
-        estimatedDurationSeconds: duration === '' ? undefined : durationSec,
         note: note.trim(),
       });
       onCreated?.();
@@ -284,47 +278,6 @@ const AddDispatchModalInner = ({
             )}
           </div>
         )}
-
-        <div>
-          <FieldLabel>Estimated duration (seconds)</FieldLabel>
-          <TextInput
-            type="number"
-            min="1"
-            placeholder="Seconds — leave blank if unknown"
-            value={duration}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDuration(e.target.value)}
-          />
-          <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-            {[
-              { label: '20s', value: '20' },
-              { label: '1m', value: '60' },
-              { label: '1h', value: '3600' },
-              { label: '1d', value: '86400' },
-            ].map((preset) => (
-              <button
-                key={preset.value}
-                type="button"
-                onClick={() => setDuration(preset.value)}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: 999,
-                  background: duration === preset.value ? '#ecebf3' : '#f5f5fa',
-                  color: accent,
-                  border: `1px solid ${duration === preset.value ? '#bcb8e2' : line}`,
-                  fontSize: 12.5,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-          <div style={{ fontSize: 12, color: muted, marginTop: 6 }}>
-            Leave blank if unknown. The countdown bar will show — if not set.
-          </div>
-        </div>
 
         <div>
           <FieldLabel>Note (optional)</FieldLabel>

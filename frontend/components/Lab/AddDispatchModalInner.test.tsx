@@ -100,7 +100,6 @@ test('submits the snake-case-mapped body and fires onCreated on resolve', async 
   const [equipmentSelect, recipeSelect] = screen.getAllByRole('combobox');
   await user.selectOptions(equipmentSelect, '1');
   await user.selectOptions(recipeSelect, '11');
-  await user.type(screen.getByPlaceholderText(/Seconds — leave blank if unknown/i), '600');
   await user.type(screen.getByPlaceholderText(/Anything the operator should know/i), '  go  ');
 
   fireEvent.click(screen.getByRole('button', { name: /Create Dispatch/i }));
@@ -109,32 +108,7 @@ test('submits the snake-case-mapped body and fires onCreated on resolve', async 
   expect(createDispatch).toHaveBeenCalledWith(12, {
     equipmentId: 1,
     recipeId: 11,
-    estimatedDurationSeconds: 600,
     note: 'go',
-  });
-});
-
-test('a duration preset chip fills the estimate field', async () => {
-  const user = userEvent.setup();
-  createDispatch.mockResolvedValue({ id: 1 });
-  hook.value = { equipment, recipes, loading: false, error: null };
-  renderWithProviders(<AddDispatchModalInner onClose={vi.fn()} wip={wip} />);
-
-  fireEvent.click(screen.getByRole('button', { name: '1m' }));
-  const durationField = screen.getByPlaceholderText(/Seconds — leave blank if unknown/i);
-  expect(durationField).toHaveValue(60);
-
-  const [equipmentSelect, recipeSelect] = screen.getAllByRole('combobox');
-  await user.selectOptions(equipmentSelect, '1');
-  await user.selectOptions(recipeSelect, '11');
-  fireEvent.click(screen.getByRole('button', { name: /Create Dispatch/i }));
-
-  await vi.waitFor(() => expect(createDispatch).toHaveBeenCalled());
-  expect(createDispatch).toHaveBeenCalledWith(12, {
-    equipmentId: 1,
-    recipeId: 11,
-    estimatedDurationSeconds: 60,
-    note: '',
   });
 });
 
