@@ -42,7 +42,7 @@ function TweaksPanel({
   });
   const toggleRail = (on: boolean) => {
     setRailVisible(on);
-    window.postMessage({ type: '__deck_rail_visible', on }, '*');
+    window.postMessage({ type: '__deck_rail_visible', on }, window.location.origin);
   };
   const offsetRef = React.useRef({ x: 16, y: 16 });
   const PAD = 16;
