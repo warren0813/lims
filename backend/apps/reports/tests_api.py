@@ -13,8 +13,7 @@ from apps.commissions.factories import (
     SampleFactory,
 )
 from apps.commissions.models import RequestStatus
-from apps.equipment.factories import EquipmentFactory
-from apps.equipment.factories import RecipeFactory
+from apps.equipment.factories import EquipmentFactory, RecipeFactory
 from apps.experiments.factories import ExperimentTypeFactory
 from apps.wip.factories import (
     DispatchFactory,

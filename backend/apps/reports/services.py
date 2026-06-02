@@ -239,16 +239,16 @@ def dispatch_result_rows(start_date: date, end_date: date) -> list[dict]:
                 "sample_count": len(samples),
                 "pass_count": pass_count,
                 "fail_count": fail_count,
-                "operator": dispatch.created_by.username if dispatch.created_by else None,
+                "operator": dispatch.created_by.username
+                if dispatch.created_by
+                else None,
                 "dispatched_at": (
                     dispatch.dispatched_at.isoformat()
                     if dispatch.dispatched_at
                     else None
                 ),
                 "completed_at": (
-                    dispatch.completed_at.isoformat()
-                    if dispatch.completed_at
-                    else None
+                    dispatch.completed_at.isoformat() if dispatch.completed_at else None
                 ),
                 "duration_seconds": round(duration_seconds, 1)
                 if duration_seconds is not None
