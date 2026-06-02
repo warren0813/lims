@@ -13,11 +13,16 @@ from apps.accounts.auth import JWTAuth
 from apps.accounts.models import Role, UserProfile
 from apps.commissions.models import Request, RequestStatus
 from apps.reports.schemas import (
+    DispatchResultsOut,
     EquipmentUtilizationOut,
     RequestStatisticsOut,
     TrendsOut,
 )
-from apps.wip.models import Dispatch
+from apps.reports.services import (
+    dispatch_result_rows,
+    equipment_utilization_rows,
+    equipment_utilization_trend,
+)
 
 router = Router(tags=["Reports"], auth=JWTAuth())
 
@@ -33,7 +38,7 @@ def _is_lab_manager(request: HttpRequest) -> bool:
 
 @router.get(
     "/equipment-utilization",
-    response={200: EquipmentUtilizationOut, 403: ErrorOut},
+    response={200: EquipmentUtilizationOut, 400: ErrorOut, 403: ErrorOut},
 )
 def equipment_utilization(
     request: HttpRequest,
@@ -46,41 +51,42 @@ def equipment_utilization(
     if not _is_lab_manager(request):
         return 403, {"detail": "Permission denied"}
 
-    # Build dispatch queryset filtered by date range.
-    dispatch_qs = Dispatch.objects.filter(
-        created_at__date__gte=start_date,
-        created_at__date__lte=end_date,
-    )
-    if equipment_id is not None:
-        dispatch_qs = dispatch_qs.filter(equipment_id=equipment_id)
-
-    # Aggregate per equipment: wip_count = number of dispatches,
-    # sample_count = distinct WIP count (proxy for batch count).
-    aggregated = (
-        dispatch_qs.values("equipment_id", "equipment__name")
-        .annotate(
-            wip_count=Count("id"),
-            sample_count=Count("wip_id", distinct=True),
-        )
-        .order_by("equipment_id")
-    )
-
-    data = [
-        {
-            "equipment": {
-                "id": row["equipment_id"],
-                "name": row["equipment__name"],
-            },
-            "wip_count": row["wip_count"],
-            "sample_count": row["sample_count"],
-        }
-        for row in aggregated
-    ]
+    try:
+        data = equipment_utilization_rows(start_date, end_date, equipment_id)
+    except ValueError as exc:
+        return 400, {"detail": str(exc)}
 
     return 200, {
         "period": period,
         "start_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),
+        "data": data,
+    }
+
+
+@router.get(
+    "/dispatch-results",
+    response={200: DispatchResultsOut, 400: ErrorOut, 403: ErrorOut},
+)
+def dispatch_results(
+    request: HttpRequest,
+    start_date: date = Query(...),  # noqa: B008
+    end_date: date = Query(...),  # noqa: B008
+) -> tuple:
+    """Return dispatch status/result rows for the selected date range."""
+    if not _is_lab_manager(request):
+        return 403, {"detail": "Permission denied"}
+
+    try:
+        data = dispatch_result_rows(start_date, end_date)
+    except ValueError as exc:
+        return 400, {"detail": str(exc)}
+
+    return 200, {
+        "period": {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+        },
         "data": data,
     }
 
@@ -101,6 +107,12 @@ def request_statistics(
     base_qs = Request.objects.filter(
         created_at__date__gte=start_date,
         created_at__date__lte=end_date,
+    )
+    request_rows_qs = (
+        base_qs.select_related("requester")
+        .prefetch_related("request_experiments__experiment_type")
+        .annotate(sample_count=Count("samples", distinct=True))
+        .order_by("-created_at", "-id")
     )
 
     total_requests = base_qs.count()
@@ -129,6 +141,27 @@ def request_statistics(
         avg_seconds = total_seconds / len(terminal_requests)
         avg_tat_hours = round(avg_seconds / 3600, 1)
 
+    request_rows = []
+    for req in request_rows_qs:
+        request_rows.append(
+            {
+                "id": req.pk,
+                "title": req.title,
+                "status": req.status,
+                "urgency": req.urgency,
+                "requester": req.requester.username,
+                "sample_count": req.sample_count,
+                "experiment_types": [
+                    re.experiment_type.name for re in req.request_experiments.all()
+                ],
+                "submitted_at": req.submitted_at.isoformat()
+                if req.submitted_at
+                else None,
+                "created_at": req.created_at.isoformat(),
+                "updated_at": req.updated_at.isoformat(),
+            }
+        )
+
     return 200, {
         "period": {
             "start_date": start_date.isoformat(),
@@ -137,11 +170,12 @@ def request_statistics(
         "status_distribution": status_distribution,
         "average_tat_hours": avg_tat_hours,
         "total_requests": total_requests,
+        "requests": request_rows,
     }
 
 
 # Trend metrics — extend this set as more series are added.
-_TREND_METRICS = {"requests_per_day"}
+_TREND_METRICS = {"requests_per_day", "equipment_utilization_per_day"}
 
 
 @router.get("/trends", response={200: TrendsOut, 400: ErrorOut, 403: ErrorOut})
@@ -153,9 +187,9 @@ def trends(
     """Return a per-day count series for the requested metric.
 
     INTEGRATION_GAPS §4: backs the lab manager dashboard trend chart.
-    Currently only ``requests_per_day`` (Request rows grouped by
-    created_at::date) is supported; the metric set is centralised in
-    _TREND_METRICS so adding new series is one-line.
+    Supports request counts and real equipment utilization. The latter
+    returns daily dispatch counts plus busy-time ratios calculated from
+    equipment reservation intervals.
 
     Zero-fills days with no rows so the SPA can plot a continuous
     series of length ``days`` without client-side gap filling.
@@ -169,17 +203,20 @@ def trends(
     end_day = timezone.now().date()
     start_day = end_day - timedelta(days=days - 1)
 
-    rows = (
-        Request.objects.filter(created_at__date__gte=start_day)
-        .annotate(day=TruncDate("created_at"))
-        .values("day")
-        .annotate(count=Count("id"))
-    )
-    counts_by_day = {row["day"]: row["count"] for row in rows}
+    if metric == "equipment_utilization_per_day":
+        points = equipment_utilization_trend(start_day, end_day)
+    else:
+        rows = (
+            Request.objects.filter(created_at__date__gte=start_day)
+            .annotate(day=TruncDate("created_at"))
+            .values("day")
+            .annotate(count=Count("id"))
+        )
+        counts_by_day = {row["day"]: row["count"] for row in rows}
 
-    points = []
-    for offset in range(days):
-        d = start_day + timedelta(days=offset)
-        points.append({"date": d.isoformat(), "count": counts_by_day.get(d, 0)})
+        points = []
+        for offset in range(days):
+            d = start_day + timedelta(days=offset)
+            points.append({"date": d.isoformat(), "count": counts_by_day.get(d, 0)})
 
     return 200, {"metric": metric, "days": days, "points": points}

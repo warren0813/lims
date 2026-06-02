@@ -490,6 +490,26 @@ export interface paths {
         patch: operations["apps_equipment_api_update_recipe"];
         trace?: never;
     };
+    "/api/reports/dispatch-results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Dispatch Results
+         * @description Return dispatch status/result rows for the selected date range.
+         */
+        get: operations["apps_reports_api_dispatch_results"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/reports/equipment-utilization": {
         parameters: {
             query?: never;
@@ -542,9 +562,9 @@ export interface paths {
          * @description Return a per-day count series for the requested metric.
          *
          *     INTEGRATION_GAPS §4: backs the lab manager dashboard trend chart.
-         *     Currently only ``requests_per_day`` (Request rows grouped by
-         *     created_at::date) is supported; the metric set is centralised in
-         *     _TREND_METRICS so adding new series is one-line.
+         *     Supports request counts and real equipment utilization. The latter
+         *     returns daily dispatch counts plus busy-time ratios calculated from
+         *     equipment reservation intervals.
          *
          *     Zero-fills days with no rows so the SPA can plot a continuous
          *     series of length ``days`` without client-side gap filling.
@@ -1159,7 +1179,7 @@ export interface components {
         };
         /**
          * DateRangeOut
-         * @description Date range nested in request statistics responses.
+         * @description Date range nested in report responses.
          */
         DateRangeOut: {
             /** End Date */
@@ -1309,6 +1329,50 @@ export interface components {
             wip_id: number;
         };
         /**
+         * DispatchResultEntryOut
+         * @description One dispatch row in the manager dispatch-result report.
+         */
+        DispatchResultEntryOut: {
+            /** Completed At */
+            completed_at: string | null;
+            /** Dispatched At */
+            dispatched_at: string | null;
+            /** Duration Seconds */
+            duration_seconds: number | null;
+            equipment: components["schemas"]["EquipmentBriefOut"];
+            experiment_type: components["schemas"]["EquipmentBriefOut"];
+            /** Fail Count */
+            fail_count: number;
+            /** Id */
+            id: number;
+            /** Operator */
+            operator: string | null;
+            /** Pass Count */
+            pass_count: number;
+            recipe: components["schemas"]["EquipmentBriefOut"];
+            /** Request Ids */
+            request_ids: number[];
+            /** Request Titles */
+            request_titles: string[];
+            /** Result Comment */
+            result_comment: string;
+            /** Sample Count */
+            sample_count: number;
+            /** Status */
+            status: string;
+            /** Wip Id */
+            wip_id: number;
+        };
+        /**
+         * DispatchResultsOut
+         * @description Output schema for the dispatch-result report endpoint.
+         */
+        DispatchResultsOut: {
+            /** Data */
+            data: components["schemas"]["DispatchResultEntryOut"][];
+            period: components["schemas"]["DateRangeOut"];
+        };
+        /**
          * DispatchStatus
          * @enum {string}
          */
@@ -1411,9 +1475,17 @@ export interface components {
          * @description Per-equipment utilization entry.
          */
         EquipmentUtilizationEntryOut: {
+            /** Available Seconds */
+            available_seconds: number;
+            /** Busy Seconds */
+            busy_seconds: number;
+            /** Dispatch Count */
+            dispatch_count: number;
             equipment: components["schemas"]["EquipmentBriefOut"];
             /** Sample Count */
             sample_count: number;
+            /** Utilization Pct */
+            utilization_pct: number;
             /** Wip Count */
             wip_count: number;
         };
@@ -1829,6 +1901,32 @@ export interface components {
             wafer_size: string;
         };
         /**
+         * RequestStatisticsEntryOut
+         * @description One request row in the manager request-statistics report.
+         */
+        RequestStatisticsEntryOut: {
+            /** Created At */
+            created_at: string;
+            /** Experiment Types */
+            experiment_types: string[];
+            /** Id */
+            id: number;
+            /** Requester */
+            requester: string;
+            /** Sample Count */
+            sample_count: number;
+            /** Status */
+            status: string;
+            /** Submitted At */
+            submitted_at: string | null;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+            /** Urgency */
+            urgency: string;
+        };
+        /**
          * RequestStatisticsOut
          * @description Output schema for the request-statistics endpoint.
          */
@@ -1836,6 +1934,8 @@ export interface components {
             /** Average Tat Hours */
             average_tat_hours: number | null;
             period: components["schemas"]["DateRangeOut"];
+            /** Requests */
+            requests: components["schemas"]["RequestStatisticsEntryOut"][];
             /** Status Distribution */
             status_distribution: {
                 [key: string]: number;
@@ -2062,6 +2162,8 @@ export interface components {
             count: number;
             /** Date */
             date: string;
+            /** Utilization Pct */
+            utilization_pct?: number | null;
         };
         /**
          * TrendsOut
@@ -3360,6 +3462,47 @@ export interface operations {
             };
         };
     };
+    apps_reports_api_dispatch_results: {
+        parameters: {
+            query: {
+                start_date: string;
+                end_date: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DispatchResultsOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
     apps_reports_api_equipment_utilization: {
         parameters: {
             query: {
@@ -3381,6 +3524,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EquipmentUtilizationOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
             /** @description Forbidden */

@@ -14,7 +14,7 @@ from unfold.admin import ModelAdmin
 from apps.commissions.models import Request, RequestStatus
 from apps.equipment.models import Equipment
 from apps.reports.models import EquipmentUtilizationReport, RequestStatisticsReport
-from apps.wip.models import Dispatch
+from apps.reports.services import equipment_utilization_rows
 
 
 class DateRangeForm(forms.Form):
@@ -41,20 +41,11 @@ class EquipmentUtilizationForm(DateRangeForm):
 
 
 def _aggregate_dispatches(start_date, end_date, equipment_obj=None):
-    """Return per-equipment dispatch aggregation for the given date range."""
-    qs = Dispatch.objects.filter(
-        created_at__date__gte=start_date,
-        created_at__date__lte=end_date,
-    )
-    if equipment_obj is not None:
-        qs = qs.filter(equipment=equipment_obj)
-    return list(
-        qs.values("equipment_id", "equipment__name")
-        .annotate(
-            wip_count=Count("id"),
-            sample_count=Count("wip_id", distinct=True),
-        )
-        .order_by("equipment__name")
+    """Return per-equipment busy-time utilization for the given date range."""
+    return equipment_utilization_rows(
+        start_date,
+        end_date,
+        equipment_obj.pk if equipment_obj is not None else None,
     )
 
 

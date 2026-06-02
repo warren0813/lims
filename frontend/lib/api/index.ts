@@ -948,6 +948,10 @@ const api = {
       const usp = new URLSearchParams(q as Record<string, string>);
       return call(`/reports/equipment-utilization?${usp}`);
     },
+    async dispatchResults(q: Record<string, string | number>) {
+      const usp = new URLSearchParams(q as Record<string, string>);
+      return call(`/reports/dispatch-results?${usp}`);
+    },
     async requestStatistics(q: Record<string, string | number>) {
       const usp = new URLSearchParams(q as Record<string, string>);
       return call(`/reports/request-statistics?${usp}`);

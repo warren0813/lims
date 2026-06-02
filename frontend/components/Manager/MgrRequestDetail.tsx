@@ -105,6 +105,11 @@ const MgrRequestDetail = ({
       : '—',
     group: 'RA',
   }));
+  const experimentById = new Map(exps.map((e) => [e.id, e]));
+  const sampleExperiments = (expIds: number[] | undefined) =>
+    (expIds || [])
+      .map((expId) => experimentById.get(expId))
+      .filter((e): e is (typeof exps)[number] => Boolean(e));
   const canAct = r.status === 'submitted';
   const canComplete = r.status === 'in_progress';
   return (
@@ -398,7 +403,7 @@ const MgrRequestDetail = ({
                 </div>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {exps.map((e) => (
+                {sampleExperiments(s.expIds).map((e) => (
                   <span
                     key={e.id}
                     style={{
