@@ -308,6 +308,173 @@ def get_request(request: HttpRequest, request_id: int):
     return 200, RequestDetailOut.from_request(req)
 
 
+def _validate_update_relational_gate(
+    status: str,
+    samples_in: list | None,
+    exp_type_ids_in: list | None,
+) -> tuple[int, dict] | None:
+    """Gate the draft-only relational fields. Returns a 422 tuple or None.
+
+    samples and experiment_type_ids may only be touched in DRAFT, and an
+    explicitly-sent empty samples list is a business-rule violation.
+    """
+    relational_sent = samples_in is not None or exp_type_ids_in is not None
+    if relational_sent and status != RequestStatus.DRAFT:
+        return 422, {
+            "detail": (
+                "samples and experiment_type_ids can only be modified "
+                "while request is in draft state"
+            )
+        }
+    if samples_in is not None and len(samples_in) == 0:
+        return 422, {"detail": "samples cannot be empty — at least one required"}
+    return None
+
+
+def _resolve_update_exp_types(
+    exp_type_ids_in: list[int] | None,
+) -> tuple[list[ExperimentType] | None, tuple[int, dict] | None]:
+    """Validate the replacement experiment_type_ids before any DB mutation.
+
+    Returns ``(new_exp_types, error)`` where ``new_exp_types`` is None when no
+    replacement was requested and ``error`` is a 422 tuple on bad input.
+    """
+    if exp_type_ids_in is None:
+        return None, None
+    unique_ids = list(dict.fromkeys(exp_type_ids_in))
+    new_exp_types = list(
+        ExperimentType.objects.filter(pk__in=unique_ids, is_active=True)
+    )
+    if len(new_exp_types) != len(unique_ids):
+        return None, (
+            422,
+            {"detail": "One or more experiment_type_ids not found or inactive"},
+        )
+    return new_exp_types, None
+
+
+def _resolve_update_sample_exp_ids(
+    req: Request,
+    samples_in: list[dict] | None,
+    new_exp_types: list[ExperimentType] | None,
+) -> tuple[list[list[int]] | None, tuple[int, dict] | None]:
+    """Resolve each wafer's experiment selection against the effective set.
+
+    The effective request-level set is the replacement set if one is supplied
+    in this PATCH, otherwise the request's current set. Pure validation (no
+    mutation) so a bad subset rolls the whole PATCH back. Returns
+    ``(resolved_sample_exp_ids, error)`` with a 422 tuple on bad input.
+    """
+    if samples_in is None:
+        return None, None
+    if new_exp_types is not None:
+        effective_exp_ids = [et.pk for et in new_exp_types]
+    else:
+        effective_exp_ids = list(
+            req.request_experiments.values_list("experiment_type_id", flat=True)
+        )
+    resolved_sample_exp_ids: list[list[int]] = []
+    for s in samples_in:
+        resolved, error = _resolve_sample_experiments(
+            s.get("experiment_type_ids"), effective_exp_ids
+        )
+        if error:
+            return None, (422, {"detail": error})
+        resolved_sample_exp_ids.append(resolved)
+    return resolved_sample_exp_ids, None
+
+
+def _replace_request_exp_types(
+    req: Request,
+    new_exp_types: list[ExperimentType],
+    samples_in: list | None,
+) -> None:
+    """Replace the request-experiment through-table rows.
+
+    When the experiment set is being replaced but the samples are not resent in
+    this PATCH, drop any per-wafer rows now outside the request set so the
+    per-wafer selections stay consistent.
+    """
+    req.request_experiments.all().delete()
+    for et in new_exp_types:
+        RequestExperiment.objects.create(request=req, experiment_type=et)
+    if samples_in is None:
+        SampleExperiment.objects.filter(sample__request=req).exclude(
+            experiment_type_id__in=[et.pk for et in new_exp_types]
+        ).delete()
+
+
+def _replace_request_samples(
+    req: Request,
+    samples_in: list[dict],
+    resolved_sample_exp_ids: list[list[int]],
+) -> None:
+    """Replace the request's samples — safe in DRAFT (no WIPs reference them)."""
+    req.samples.all().delete()
+    for s, chosen_ids in zip(samples_in, resolved_sample_exp_ids, strict=True):
+        sample = Sample.objects.create(
+            request=req,
+            wafer_id=s["wafer_id"],
+            wafer_size=s["wafer_size"],
+        )
+        SampleExperiment.objects.bulk_create(
+            [
+                SampleExperiment(sample=sample, experiment_type_id=et_id)
+                for et_id in chosen_ids
+            ]
+        )
+
+
+def _apply_request_update(
+    req: Request, sent: dict
+) -> tuple[Request, None] | tuple[None, tuple[int, dict]]:
+    """Validate then apply a PATCH to a locked request, inside a transaction.
+
+    ``sent`` is ``payload.model_dump(exclude_unset=True)``. Returns
+    ``(locked_req, None)`` on success or ``(None, error)`` where ``error`` is a
+    ``(status_code, detail)`` tuple. All validation runs before any DB mutation
+    so a bad input commits nothing.
+    """
+    req = Request.objects.select_for_update().get(pk=req.pk)
+
+    if req.status not in (RequestStatus.DRAFT, RequestStatus.RETURNED):
+        return None, (400, {"detail": "Can only update draft or returned requests"})
+
+    samples_in = sent.pop("samples", None)
+    exp_type_ids_in = sent.pop("experiment_type_ids", None)
+
+    gate_error = _validate_update_relational_gate(
+        req.status, samples_in, exp_type_ids_in
+    )
+    if gate_error is not None:
+        return None, gate_error
+
+    # Validate everything before any DB mutation so the whole PATCH rolls
+    # back together on bad input.
+    new_exp_types, exp_error = _resolve_update_exp_types(exp_type_ids_in)
+    if exp_error is not None:
+        return None, exp_error
+
+    resolved_sample_exp_ids, sample_error = _resolve_update_sample_exp_ids(
+        req, samples_in, new_exp_types
+    )
+    if sample_error is not None:
+        return None, sample_error
+
+    # Scalar partial update (title/note/urgency).
+    for field, value in sent.items():
+        setattr(req, field, value)
+    req.save()
+
+    if new_exp_types is not None:
+        _replace_request_exp_types(req, new_exp_types, samples_in)
+
+    if samples_in is not None:
+        _replace_request_samples(req, samples_in, resolved_sample_exp_ids)
+
+    return req, None
+
+
 @router.patch(
     "/{request_id}",
     response={
@@ -339,95 +506,9 @@ def update_request(request: HttpRequest, request_id: int, payload: RequestUpdate
     sent = payload.model_dump(exclude_unset=True)
 
     with transaction.atomic():
-        req = Request.objects.select_for_update().get(pk=req.pk)
-
-        if req.status not in (RequestStatus.DRAFT, RequestStatus.RETURNED):
-            return 400, {"detail": "Can only update draft or returned requests"}
-
-        samples_in = sent.pop("samples", None)
-        exp_type_ids_in = sent.pop("experiment_type_ids", None)
-
-        # Draft-only gate for the relational fields.
-        if (samples_in is not None or exp_type_ids_in is not None) and (
-            req.status != RequestStatus.DRAFT
-        ):
-            return 422, {
-                "detail": (
-                    "samples and experiment_type_ids can only be modified "
-                    "while request is in draft state"
-                )
-            }
-
-        if samples_in is not None and len(samples_in) == 0:
-            return 422, {"detail": "samples cannot be empty — at least one required"}
-
-        # Validate experiment_type_ids before any DB mutation so the
-        # whole PATCH rolls back together on bad input.
-        new_exp_types = None
-        if exp_type_ids_in is not None:
-            unique_ids = list(dict.fromkeys(exp_type_ids_in))
-            new_exp_types = list(
-                ExperimentType.objects.filter(pk__in=unique_ids, is_active=True)
-            )
-            if len(new_exp_types) != len(unique_ids):
-                return 422, {
-                    "detail": "One or more experiment_type_ids not found or inactive"
-                }
-
-        # Resolve + validate each wafer's experiment selection against the
-        # effective request-level set (the new set if it's being replaced in
-        # this PATCH, otherwise the request's current set). Done before any
-        # mutation so a bad subset rolls the whole PATCH back.
-        resolved_sample_exp_ids: list[list[int]] | None = None
-        if samples_in is not None:
-            if new_exp_types is not None:
-                effective_exp_ids = [et.pk for et in new_exp_types]
-            else:
-                effective_exp_ids = list(
-                    req.request_experiments.values_list("experiment_type_id", flat=True)
-                )
-            resolved_sample_exp_ids = []
-            for s in samples_in:
-                resolved, error = _resolve_sample_experiments(
-                    s.get("experiment_type_ids"), effective_exp_ids
-                )
-                if error:
-                    return 422, {"detail": error}
-                resolved_sample_exp_ids.append(resolved)
-
-        # Scalar partial update (title/note/urgency).
-        for field, value in sent.items():
-            setattr(req, field, value)
-        req.save()
-
-        # Replace experiment_types through-table.
-        if new_exp_types is not None:
-            req.request_experiments.all().delete()
-            for et in new_exp_types:
-                RequestExperiment.objects.create(request=req, experiment_type=et)
-            # Keep per-wafer selections consistent: if the experiment set
-            # shrank and the samples aren't being resent in this PATCH, drop
-            # any per-wafer rows now outside the request set.
-            if samples_in is None:
-                SampleExperiment.objects.filter(sample__request=req).exclude(
-                    experiment_type_id__in=[et.pk for et in new_exp_types]
-                ).delete()
-
-        # Replace samples — safe in DRAFT because no WIPs reference them.
-        if samples_in is not None:
-            req.samples.all().delete()
-            for s, chosen_ids in zip(samples_in, resolved_sample_exp_ids, strict=True):
-                sample = Sample.objects.create(
-                    request=req,
-                    wafer_id=s["wafer_id"],
-                    wafer_size=s["wafer_size"],
-                )
-                SampleExperiment.objects.bulk_create(
-                    [
-                        SampleExperiment(sample=sample, experiment_type_id=et_id)
-                        for et_id in chosen_ids
-                    ]
-                )
+        req, error = _apply_request_update(req, sent)
+        if error is not None:
+            return error
 
     req = _request_detail_queryset().get(pk=req.pk)
     return 200, RequestDetailOut.from_request(req)

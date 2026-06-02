@@ -1,6 +1,6 @@
 'use client';
 import React, { use, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams, type ReadonlyURLSearchParams } from 'next/navigation';
 import { makeMgrNavigate, makeLabNavigate } from '@/lib/navigate';
 import { ink } from '@/lib/colors';
 import MgrDashboard from '@/components/Manager/MgrDashboard';
@@ -16,6 +16,82 @@ import LabWipDetail from '@/components/Lab/LabWipDetail';
 import LabDispatchList from '@/components/Lab/LabDispatchList';
 import LabDispatchDetail from '@/components/Lab/LabDispatchDetail';
 import LabEquipment from '@/components/Lab/LabEquipment';
+
+type Navigate = ReturnType<typeof makeMgrNavigate>;
+type LabNavigate = ReturnType<typeof makeLabNavigate>;
+type ShowToast = (msg: string) => void;
+
+type RouteContext = {
+  navigate: Navigate;
+  labNavigate: LabNavigate;
+  showToast: ShowToast;
+  searchParams: ReadonlyURLSearchParams;
+};
+
+// /manager/lab/... — lab operations for manager (with canManage=true)
+function pickLabPage(
+  seg1: string | undefined,
+  seg2: string | undefined,
+  ctx: RouteContext,
+): React.ReactNode {
+  const { labNavigate, showToast, searchParams } = ctx;
+  switch (seg1) {
+    case 'samples':
+      return seg2 ? (
+        <LabWaferDetail id={Number(seg2)} navigate={labNavigate} showToast={showToast} />
+      ) : (
+        <LabSamples
+          navigate={labNavigate}
+          defaultTab={searchParams.get('tab') || 'all'}
+          showToast={showToast}
+        />
+      );
+    case 'wips':
+      return seg2 ? (
+        <LabWipDetail id={Number(seg2)} navigate={labNavigate} showToast={showToast} />
+      ) : (
+        <LabWipList navigate={labNavigate} showToast={showToast} />
+      );
+    case 'dispatches':
+      return seg2 ? (
+        <LabDispatchDetail id={Number(seg2)} navigate={labNavigate} showToast={showToast} />
+      ) : (
+        <LabDispatchList navigate={labNavigate} defaultTab={searchParams.get('tab') || 'active'} />
+      );
+    case 'equipment':
+      return <LabEquipment navigate={labNavigate} canManage={true} showToast={showToast} />;
+    default:
+      // undefined, 'dashboard', or any unknown segment → dashboard
+      return <LabDashboard navigate={labNavigate} />;
+  }
+}
+
+function pickManagerPage(
+  seg0: string | undefined,
+  seg1: string | undefined,
+  seg2: string | undefined,
+  ctx: RouteContext,
+): React.ReactNode {
+  const { navigate, showToast } = ctx;
+  if (seg0 === 'lab') {
+    return pickLabPage(seg1, seg2, ctx);
+  }
+  switch (seg0) {
+    case 'requests':
+      return seg1 ? (
+        <MgrRequestDetail id={Number(seg1)} navigate={navigate} showToast={showToast} />
+      ) : (
+        <MgrAllRequests navigate={navigate} />
+      );
+    case 'recipes':
+      return <MgrRecipes showToast={showToast} />;
+    case 'reports':
+      return <MgrReports />;
+    default:
+      // undefined, 'dashboard', or any unknown segment → dashboard
+      return <MgrDashboard navigate={navigate} />;
+  }
+}
 
 export default function ManagerPage({ params }: { params: Promise<{ path?: string[] }> }) {
   const { path = [] } = use(params);
@@ -33,61 +109,12 @@ export default function ManagerPage({ params }: { params: Promise<{ path?: strin
 
   const [seg0, seg1, seg2] = path;
 
-  let page: React.ReactNode;
-
-  // /manager/lab/... — lab operations for manager (with canManage=true)
-  if (seg0 === 'lab') {
-    if (!seg1 || seg1 === 'dashboard') {
-      page = <LabDashboard navigate={labNavigate} />;
-    } else if (seg1 === 'samples') {
-      if (seg2) {
-        page = <LabWaferDetail id={Number(seg2)} navigate={labNavigate} showToast={showToast} />;
-      } else {
-        page = (
-          <LabSamples
-            navigate={labNavigate}
-            defaultTab={searchParams.get('tab') || 'all'}
-            showToast={showToast}
-          />
-        );
-      }
-    } else if (seg1 === 'wips') {
-      if (seg2) {
-        page = <LabWipDetail id={Number(seg2)} navigate={labNavigate} showToast={showToast} />;
-      } else {
-        page = <LabWipList navigate={labNavigate} showToast={showToast} />;
-      }
-    } else if (seg1 === 'dispatches') {
-      if (seg2) {
-        page = <LabDispatchDetail id={Number(seg2)} navigate={labNavigate} showToast={showToast} />;
-      } else {
-        page = (
-          <LabDispatchList
-            navigate={labNavigate}
-            defaultTab={searchParams.get('tab') || 'active'}
-          />
-        );
-      }
-    } else if (seg1 === 'equipment') {
-      page = <LabEquipment navigate={labNavigate} canManage={true} showToast={showToast} />;
-    } else {
-      page = <LabDashboard navigate={labNavigate} />;
-    }
-  } else if (!seg0 || seg0 === 'dashboard') {
-    page = <MgrDashboard navigate={navigate} />;
-  } else if (seg0 === 'requests') {
-    if (seg1) {
-      page = <MgrRequestDetail id={Number(seg1)} navigate={navigate} showToast={showToast} />;
-    } else {
-      page = <MgrAllRequests navigate={navigate} />;
-    }
-  } else if (seg0 === 'recipes') {
-    page = <MgrRecipes showToast={showToast} />;
-  } else if (seg0 === 'reports') {
-    page = <MgrReports />;
-  } else {
-    page = <MgrDashboard navigate={navigate} />;
-  }
+  const page = pickManagerPage(seg0, seg1, seg2, {
+    navigate,
+    labNavigate,
+    showToast,
+    searchParams,
+  });
 
   return (
     <>
