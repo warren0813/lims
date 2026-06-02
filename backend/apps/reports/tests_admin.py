@@ -5,6 +5,7 @@ from datetime import date, timedelta
 import pytest
 from django.contrib.auth.models import User
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.commissions.factories import RequestFactory
 from apps.equipment.factories import EquipmentFactory
@@ -47,14 +48,19 @@ class TestEquipmentUtilizationAdmin:
     def test_query_aggregates_dispatch_data(self, admin_client):
         equipment = EquipmentFactory()
         wip = WIPFactory()
-        DispatchFactory(wip=wip, equipment=equipment)
+        dispatch = DispatchFactory(wip=wip, equipment=equipment)
+        type(dispatch).objects.filter(pk=dispatch.pk).update(
+            dispatched_at=timezone.now() - timedelta(hours=1),
+            completed_at=timezone.now(),
+        )
         url = reverse("admin:reports_equipmentutilizationreport_changelist")
         start = (date.today() - timedelta(days=1)).isoformat()
         end = date.today().isoformat()
         response = admin_client.get(url, {"start_date": start, "end_date": end})
         rows = response.context["rows"]
         assert len(rows) == 1
-        assert rows[0]["equipment__name"] == equipment.name
+        assert rows[0]["equipment"]["name"] == equipment.name
+        assert rows[0]["dispatch_count"] == 1
         assert rows[0]["wip_count"] == 1
 
     def test_equipment_filter_narrows_results(self, admin_client):
@@ -72,7 +78,7 @@ class TestEquipmentUtilizationAdmin:
         )
         rows = response.context["rows"]
         assert len(rows) == 1
-        assert rows[0]["equipment_id"] == eq1.pk
+        assert rows[0]["equipment"]["id"] == eq1.pk
 
     def test_requires_login(self, client):
         url = reverse("admin:reports_equipmentutilizationreport_changelist")

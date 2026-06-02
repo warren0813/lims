@@ -51,6 +51,10 @@ from apps.equipment.models import (
     Recipe,
 )
 from apps.experiments.models import ExperimentType
+from apps.reports.services import (
+    equipment_utilization_rows,
+    equipment_utilization_trend,
+)
 from apps.wip.models import (
     WIP,
     Dispatch,
@@ -456,49 +460,13 @@ def dashboard_chart_workload(request: HttpRequest) -> HttpResponse:
 def dashboard_chart_capacity(request: HttpRequest) -> HttpResponse:
     """HTMX partial: capacity/utilization trend for lab manager."""
     start, end = _parse_chart_dates(request)
-    total_equipment = Equipment.objects.count()
-
-    throughput_qs = (
-        Dispatch.objects.filter(
-            dispatched_at__isnull=False,
-            dispatched_at__date__gte=start,
-            dispatched_at__date__lte=end,
-        )
-        .values("dispatched_at__date")
-        .annotate(count=Count("id"))
-        .order_by("dispatched_at__date")
-    )
-    throughput_map = {
-        row["dispatched_at__date"].isoformat(): row["count"] for row in throughput_qs
-    }
-
-    active_qs = (
-        Dispatch.objects.filter(
-            dispatched_at__isnull=False,
-            dispatched_at__date__gte=start,
-            dispatched_at__date__lte=end,
-        )
-        .values("dispatched_at__date")
-        .annotate(active=Count("equipment_id", distinct=True))
-        .order_by("dispatched_at__date")
-    )
-    utilization_map = {
-        row["dispatched_at__date"].isoformat(): round(
-            row["active"] / max(total_equipment, 1) * 100, 1
-        )
-        for row in active_qs
-    }
-
-    labels, throughput_values = _build_daily_series(start, end, throughput_map)
-    _, utilization_values = _build_daily_series(
-        start, end, utilization_map, default=0.0
-    )
+    points = equipment_utilization_trend(start, end)
 
     chart_json = json.dumps(
         {
-            "labels": labels,
-            "throughput": throughput_values,
-            "utilization_pct": utilization_values,
+            "labels": [point["date"] for point in points],
+            "throughput": [point["count"] for point in points],
+            "utilization_pct": [point["utilization_pct"] for point in points],
         }
     )
     return render(
@@ -1680,27 +1648,20 @@ def reports_utilization(request: HttpRequest) -> HttpResponse:
             {"error": "Invalid date range."},
         )
 
-    dispatch_qs = Dispatch.objects.filter(
-        created_at__date__gte=start_date,
-        created_at__date__lte=end_date,
-    )
-    if equipment_id:
-        dispatch_qs = dispatch_qs.filter(equipment_id=equipment_id)
-
-    aggregated = (
-        dispatch_qs.values("equipment_id", "equipment__name")
-        .annotate(
-            wip_count=Count("id"),
-            sample_count=Count("wip_id", distinct=True),
+    try:
+        data = equipment_utilization_rows(start_date, end_date, equipment_id)
+    except ValueError:
+        return render(
+            request,
+            "web/reports/_utilization.html",
+            {"error": "Invalid date range."},
         )
-        .order_by("equipment_id")
-    )
 
     return render(
         request,
         "web/reports/_utilization.html",
         {
-            "data": list(aggregated),
+            "data": data,
             "period": period,
             "start_date": start_date,
             "end_date": end_date,

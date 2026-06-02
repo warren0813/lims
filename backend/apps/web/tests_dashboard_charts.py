@@ -313,17 +313,20 @@ class TestLabManagerCapacityChart:
         today = date.today()
         profile = LabManagerFactory()
 
-        # 2 equipment total, 1 used today
+        # 2 equipment total, 1 used for half of today.
         eq1 = EquipmentFactory()
         EquipmentFactory()  # unused
         # Use a recipe tied to eq1 so DispatchFactory doesn't create a 3rd equipment
         recipe = RecipeFactory()
         wip = WIPFactory()
         d = DispatchFactory(
-            status=DispatchStatus.DISPATCHED, wip=wip, equipment=eq1, recipe=recipe
+            status=DispatchStatus.COMPLETED, wip=wip, equipment=eq1, recipe=recipe
         )
-        d.dispatched_at = timezone.now()
-        d.save()
+        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        type(d).objects.filter(pk=d.pk).update(
+            dispatched_at=today_start,
+            completed_at=today_start + timedelta(hours=12),
+        )
 
         c = Client()
         c.force_login(profile.user)
@@ -333,8 +336,8 @@ class TestLabManagerCapacityChart:
 
         today_str = today.isoformat()
         today_index = data["labels"].index(today_str)
-        # 1 out of 2 equipment used = 50%
-        assert data["utilization_pct"][today_index] == 50.0
+        # Half a day on 1 out of 2 equipment = 25%.
+        assert data["utilization_pct"][today_index] == 25.0
 
     def test_invalid_dates_still_returns_200(self):
         profile = LabManagerFactory()

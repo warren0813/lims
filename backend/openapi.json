@@ -102,7 +102,7 @@
         "type": "object"
       },
       "DateRangeOut": {
-        "description": "Date range nested in request statistics responses.",
+        "description": "Date range nested in report responses.",
         "properties": {
           "end_date": {
             "title": "End Date",
@@ -519,6 +519,147 @@
         "title": "DispatchListOut",
         "type": "object"
       },
+      "DispatchResultEntryOut": {
+        "description": "One dispatch row in the manager dispatch-result report.",
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "dispatched_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dispatched At"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "equipment": {
+            "$ref": "#/components/schemas/EquipmentBriefOut"
+          },
+          "experiment_type": {
+            "$ref": "#/components/schemas/EquipmentBriefOut"
+          },
+          "fail_count": {
+            "title": "Fail Count",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "operator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator"
+          },
+          "pass_count": {
+            "title": "Pass Count",
+            "type": "integer"
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/EquipmentBriefOut"
+          },
+          "request_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Request Ids",
+            "type": "array"
+          },
+          "request_titles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Request Titles",
+            "type": "array"
+          },
+          "result_comment": {
+            "title": "Result Comment",
+            "type": "string"
+          },
+          "sample_count": {
+            "title": "Sample Count",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "wip_id": {
+            "title": "Wip Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "wip_id",
+          "status",
+          "equipment",
+          "experiment_type",
+          "recipe",
+          "request_ids",
+          "request_titles",
+          "sample_count",
+          "pass_count",
+          "fail_count",
+          "operator",
+          "dispatched_at",
+          "completed_at",
+          "duration_seconds",
+          "result_comment"
+        ],
+        "title": "DispatchResultEntryOut",
+        "type": "object"
+      },
+      "DispatchResultsOut": {
+        "description": "Output schema for the dispatch-result report endpoint.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/DispatchResultEntryOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "period": {
+            "$ref": "#/components/schemas/DateRangeOut"
+          }
+        },
+        "required": [
+          "period",
+          "data"
+        ],
+        "title": "DispatchResultsOut",
+        "type": "object"
+      },
       "DispatchStatus": {
         "enum": [
           "pending",
@@ -737,12 +878,28 @@
       "EquipmentUtilizationEntryOut": {
         "description": "Per-equipment utilization entry.",
         "properties": {
+          "available_seconds": {
+            "title": "Available Seconds",
+            "type": "number"
+          },
+          "busy_seconds": {
+            "title": "Busy Seconds",
+            "type": "number"
+          },
+          "dispatch_count": {
+            "title": "Dispatch Count",
+            "type": "integer"
+          },
           "equipment": {
             "$ref": "#/components/schemas/EquipmentBriefOut"
           },
           "sample_count": {
             "title": "Sample Count",
             "type": "integer"
+          },
+          "utilization_pct": {
+            "title": "Utilization Pct",
+            "type": "number"
           },
           "wip_count": {
             "title": "Wip Count",
@@ -751,6 +908,10 @@
         },
         "required": [
           "equipment",
+          "busy_seconds",
+          "available_seconds",
+          "utilization_pct",
+          "dispatch_count",
           "wip_count",
           "sample_count"
         ],
@@ -1541,6 +1702,75 @@
         "title": "RequestSampleBriefOut",
         "type": "object"
       },
+      "RequestStatisticsEntryOut": {
+        "description": "One request row in the manager request-statistics report.",
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "experiment_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Experiment Types",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "requester": {
+            "title": "Requester",
+            "type": "string"
+          },
+          "sample_count": {
+            "title": "Sample Count",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "urgency": {
+            "title": "Urgency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "urgency",
+          "requester",
+          "sample_count",
+          "experiment_types",
+          "submitted_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RequestStatisticsEntryOut",
+        "type": "object"
+      },
       "RequestStatisticsOut": {
         "description": "Output schema for the request-statistics endpoint.",
         "properties": {
@@ -1558,6 +1788,13 @@
           "period": {
             "$ref": "#/components/schemas/DateRangeOut"
           },
+          "requests": {
+            "items": {
+              "$ref": "#/components/schemas/RequestStatisticsEntryOut"
+            },
+            "title": "Requests",
+            "type": "array"
+          },
           "status_distribution": {
             "additionalProperties": {
               "type": "integer"
@@ -1574,7 +1811,8 @@
           "period",
           "status_distribution",
           "average_tat_hours",
-          "total_requests"
+          "total_requests",
+          "requests"
         ],
         "title": "RequestStatisticsOut",
         "type": "object"
@@ -2078,6 +2316,17 @@
           "date": {
             "title": "Date",
             "type": "string"
+          },
+          "utilization_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utilization Pct"
           }
         },
         "required": [
@@ -4161,6 +4410,75 @@
         ]
       }
     },
+    "/api/reports/dispatch-results": {
+      "get": {
+        "description": "Return dispatch status/result rows for the selected date range.",
+        "operationId": "apps_reports_api_dispatch_results",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start_date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Start Date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "End Date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchResultsOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ],
+        "summary": "Dispatch Results",
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
     "/api/reports/equipment-utilization": {
       "get": {
         "description": "Return equipment utilization statistics. Lab Manager only.",
@@ -4222,6 +4540,16 @@
               }
             },
             "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
           },
           "403": {
             "content": {
@@ -4306,7 +4634,7 @@
     },
     "/api/reports/trends": {
       "get": {
-        "description": "Return a per-day count series for the requested metric.\n\nINTEGRATION_GAPS §4: backs the lab manager dashboard trend chart.\nCurrently only ``requests_per_day`` (Request rows grouped by\ncreated_at::date) is supported; the metric set is centralised in\n_TREND_METRICS so adding new series is one-line.\n\nZero-fills days with no rows so the SPA can plot a continuous\nseries of length ``days`` without client-side gap filling.",
+        "description": "Return a per-day count series for the requested metric.\n\nINTEGRATION_GAPS §4: backs the lab manager dashboard trend chart.\nSupports request counts and real equipment utilization. The latter\nreturns daily dispatch counts plus busy-time ratios calculated from\nequipment reservation intervals.\n\nZero-fills days with no rows so the SPA can plot a continuous\nseries of length ``days`` without client-side gap filling.",
         "operationId": "apps_reports_api_trends",
         "parameters": [
           {
