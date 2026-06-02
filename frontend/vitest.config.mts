@@ -32,20 +32,29 @@ export default defineConfig({
       ],
       thresholds: {
         // Progressive ratchet — these are FLOORS, not the target. Current global
-        // coverage is ~11% lines (utils + ui + lib + the app/ route pages now
-        // covered; layouts, the API proxy route, data hooks, and the API client
-        // are not yet). Raise these numbers as coverage climbs toward the 80%
-        // goal; never lower them. CI fails if coverage regresses below the floor.
-        lines: 11,
-        statements: 11,
-        functions: 5,
-        branches: 10,
+        // coverage is ~31% lines (utils + ui + lib, the app/ route pages, every
+        // data hook, and the lib/api client are now covered; the big screen
+        // components, layouts, and the API proxy route are not yet). Raise these
+        // numbers as coverage climbs toward the 80% goal; never lower them. CI
+        // fails if coverage regresses below the floor.
+        lines: 30,
+        statements: 29,
+        functions: 27,
+        branches: 21,
         // Pure utils are fully covered — lock that in so they can't regress.
         'components/**/utils/**': {
           lines: 95,
           functions: 100,
           branches: 85,
           statements: 95,
+        },
+        // The API client (lib/api/index.ts) is exercised end-to-end via a fetch
+        // mock — lock the high coverage so a refactor can't silently drop it.
+        'lib/api/**': {
+          lines: 90,
+          functions: 95,
+          branches: 80,
+          statements: 90,
         },
       },
     },
