@@ -58,6 +58,9 @@ from apps.wip.state_machine import (
     validate_wip_transition,
 )
 
+_PERMISSION_DENIED = "Permission denied"
+_NOT_FOUND = "Not found"
+
 router = Router(tags=["WIPs"], auth=JWTAuth())
 dispatch_router = Router(tags=["Dispatches"], auth=JWTAuth())
 automation_router = Router(tags=["Automation"], auth=JWTAuth())
@@ -104,7 +107,7 @@ def list_wips(
 ):
     """List WIPs. Lab staff and managers only."""
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     # Materialise any simulated-machine runs whose auto_complete_at has
     # elapsed before reading, so WIP + nested dispatch statuses are current.
@@ -137,7 +140,7 @@ def create_wip(request: HttpRequest, payload: WIPIn):
     the experiment_type and the sample batch.
     """
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     try:
         experiment_type = ExperimentType.objects.get(
@@ -169,7 +172,7 @@ def create_wip(request: HttpRequest, payload: WIPIn):
 def get_wip(request: HttpRequest, wip_id: int):
     """Get WIP detail with dispatches. Lab staff and managers only."""
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     # Reflect any elapsed auto-complete deadline before reading.
     finalize_due_dispatches()
@@ -177,7 +180,7 @@ def get_wip(request: HttpRequest, wip_id: int):
     try:
         wip = _wip_detail_queryset().get(pk=wip_id)
     except WIP.DoesNotExist:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     return 200, WIPDetailOut.from_wip(wip)
 
@@ -192,7 +195,7 @@ def add_samples_to_wip(request: HttpRequest, wip_id: int, payload: WIPAddSamples
     The new samples' parent requests must include the WIP's experiment_type.
     """
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     with transaction.atomic():
         try:
@@ -202,7 +205,7 @@ def add_samples_to_wip(request: HttpRequest, wip_id: int, payload: WIPAddSamples
                 .get(pk=wip_id)
             )
         except WIP.DoesNotExist:
-            return 404, {"detail": "Not found"}
+            return 404, {"detail": _NOT_FOUND}
 
         if wip.status not in (WIPStatus.CREATED, WIPStatus.IN_PROGRESS):
             return 400, {"detail": "Cannot add samples to a completed or aborted WIP"}
@@ -254,7 +257,7 @@ def create_dispatch(request: HttpRequest, wip_id: int, payload: DispatchIn):
     Automatically transitions WIP to in_progress on first dispatch.
     """
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     with transaction.atomic():
         try:
@@ -264,7 +267,7 @@ def create_dispatch(request: HttpRequest, wip_id: int, payload: DispatchIn):
                 .get(pk=wip_id)
             )
         except WIP.DoesNotExist:
-            return 404, {"detail": "Not found"}
+            return 404, {"detail": _NOT_FOUND}
 
         # Single-active-dispatch rule: refuse if any existing dispatch
         # is non-terminal (see TERMINAL_DISPATCH_STATUSES). Done after
@@ -352,13 +355,13 @@ def complete_wip(request: HttpRequest, wip_id: int):
     Auto-completes samples and checks if parent requests are done.
     """
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     with transaction.atomic():
         try:
             wip = WIP.objects.select_for_update().get(pk=wip_id)
         except WIP.DoesNotExist:
-            return 404, {"detail": "Not found"}
+            return 404, {"detail": _NOT_FOUND}
 
         if not check_all_dispatches_done(wip):
             return 400, {
@@ -387,13 +390,13 @@ def complete_wip(request: HttpRequest, wip_id: int):
 def abort_wip(request: HttpRequest, wip_id: int):
     """Abort a WIP. Marks associated samples as processing_exception."""
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     with transaction.atomic():
         try:
             wip = WIP.objects.select_for_update().get(pk=wip_id)
         except WIP.DoesNotExist:
-            return 404, {"detail": "Not found"}
+            return 404, {"detail": _NOT_FOUND}
 
         try:
             target = validate_wip_transition(wip.status, "abort")
@@ -429,7 +432,7 @@ def list_dispatches(
     operator's username and department for each row without an N+1.
     """
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     # Reflect any elapsed auto-complete deadline before reading.
     finalize_due_dispatches()
@@ -451,7 +454,7 @@ def list_dispatches(
 def get_dispatch(request: HttpRequest, dispatch_id: int):
     """Get dispatch detail. Lab staff and managers only."""
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     # Reflect any elapsed auto-complete deadline before reading.
     finalize_due_dispatches()
@@ -459,7 +462,7 @@ def get_dispatch(request: HttpRequest, dispatch_id: int):
     try:
         dispatch = _dispatch_detail_queryset().get(pk=dispatch_id)
     except Dispatch.DoesNotExist:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     return 200, DispatchDetailOut.from_dispatch(dispatch)
 
@@ -471,13 +474,13 @@ def get_dispatch(request: HttpRequest, dispatch_id: int):
 def start_dispatch(request: HttpRequest, dispatch_id: int):
     """Start a dispatch (pending/dispatched → running). Lab staff only."""
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     with transaction.atomic():
         try:
             dispatch = Dispatch.objects.select_for_update().get(pk=dispatch_id)
         except Dispatch.DoesNotExist:
-            return 404, {"detail": "Not found"}
+            return 404, {"detail": _NOT_FOUND}
 
         # If PENDING, run the "dispatch" transition first, then "start".
         if dispatch.status == DispatchStatus.PENDING:
@@ -517,7 +520,7 @@ def unload_dispatch(request: HttpRequest, dispatch_id: int):
     the outcomes before the operator finalises the run.
     """
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     with transaction.atomic():
         try:
@@ -527,7 +530,7 @@ def unload_dispatch(request: HttpRequest, dispatch_id: int):
                 .get(pk=dispatch_id)
             )
         except Dispatch.DoesNotExist:
-            return 404, {"detail": "Not found"}
+            return 404, {"detail": _NOT_FOUND}
 
         try:
             target = validate_dispatch_transition(dispatch.status, "unload")
@@ -558,7 +561,7 @@ def record_result(request: HttpRequest, dispatch_id: int, payload: RecordResultI
     WIP-level auto-complete cascade. Lab staff only.
     """
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     with transaction.atomic():
         try:
@@ -568,7 +571,7 @@ def record_result(request: HttpRequest, dispatch_id: int, payload: RecordResultI
                 .get(pk=dispatch_id)
             )
         except Dispatch.DoesNotExist:
-            return 404, {"detail": "Not found"}
+            return 404, {"detail": _NOT_FOUND}
 
         try:
             target = validate_dispatch_transition(dispatch.status, "record_result")
@@ -612,13 +615,13 @@ def report_exception(
 ):
     """Report an execution exception. Lab staff only."""
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     with transaction.atomic():
         try:
             dispatch = Dispatch.objects.select_for_update().get(pk=dispatch_id)
         except Dispatch.DoesNotExist:
-            return 404, {"detail": "Not found"}
+            return 404, {"detail": _NOT_FOUND}
 
         try:
             target = validate_dispatch_transition(dispatch.status, "report_exception")
@@ -641,7 +644,7 @@ def report_exception(
 def redispatch(request: HttpRequest, dispatch_id: int):
     """Redispatch an exception dispatch. Creates a new PENDING dispatch. Lab staff only."""
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     with transaction.atomic():
         try:
@@ -651,7 +654,7 @@ def redispatch(request: HttpRequest, dispatch_id: int):
                 .get(pk=dispatch_id)
             )
         except Dispatch.DoesNotExist:
-            return 404, {"detail": "Not found"}
+            return 404, {"detail": _NOT_FOUND}
 
         try:
             target = validate_dispatch_transition(dispatch.status, "redispatch")
@@ -692,13 +695,13 @@ def abort_dispatch(request: HttpRequest, dispatch_id: int):
     or open a fresh dispatch.
     """
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     with transaction.atomic():
         try:
             dispatch = Dispatch.objects.select_for_update().get(pk=dispatch_id)
         except Dispatch.DoesNotExist:
-            return 404, {"detail": "Not found"}
+            return 404, {"detail": _NOT_FOUND}
 
         try:
             target = validate_dispatch_transition(dispatch.status, "abort")
@@ -732,7 +735,7 @@ def submit_equipment_result(request: HttpRequest, payload: AutomationResultIn):
     directly in COMPLETED).
     """
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     with transaction.atomic():
         try:

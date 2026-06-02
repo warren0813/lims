@@ -20,6 +20,9 @@ from apps.equipment.schemas import (
 )
 from apps.experiments.models import ExperimentType
 
+_PERMISSION_DENIED = "Permission denied"
+_NOT_FOUND = "Not found"
+
 router = Router(tags=["Equipment"], auth=JWTAuth())
 recipe_router = Router(tags=["Recipes"], auth=JWTAuth())
 
@@ -53,7 +56,7 @@ def list_equipment(
 ):
     """List equipment with optional search and filters."""
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     qs = Equipment.objects.prefetch_related("capabilities").order_by("name")
 
@@ -70,7 +73,7 @@ def list_equipment(
 def create_equipment(request: HttpRequest, payload: EquipmentIn):
     """Create a new equipment. Only lab staff and managers allowed."""
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     if payload.experiment_type_ids:
         valid_ids = _validate_experiment_type_ids(payload.experiment_type_ids)
@@ -104,12 +107,12 @@ def create_equipment(request: HttpRequest, payload: EquipmentIn):
 def get_equipment(request: HttpRequest, equipment_id: int):
     """Get a single equipment by ID."""
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     try:
         equip = Equipment.objects.prefetch_related("capabilities").get(pk=equipment_id)
     except Equipment.DoesNotExist:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     return 200, EquipmentOut.from_equipment(equip)
 
@@ -125,12 +128,12 @@ def update_equipment(
 ):
     """Partially update equipment. Only lab staff and managers allowed."""
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     try:
         equip = Equipment.objects.prefetch_related("capabilities").get(pk=equipment_id)
     except Equipment.DoesNotExist:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     updates = payload.model_dump(exclude_unset=True, exclude_none=True)
     for field, value in updates.items():
@@ -153,12 +156,12 @@ def set_equipment_capabilities(
 ):
     """Replace all capabilities for an equipment."""
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     try:
         equip = Equipment.objects.get(pk=equipment_id)
     except Equipment.DoesNotExist:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     valid_ids = _validate_experiment_type_ids(payload.experiment_type_ids)
     if valid_ids is None:
@@ -193,7 +196,7 @@ def list_recipes(
 ):
     """List recipes with optional filters."""
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     qs = Recipe.objects.select_related("experiment_type").order_by("name")
 
@@ -213,7 +216,7 @@ def list_recipes(
 def create_recipe(request: HttpRequest, payload: RecipeIn):
     """Create a new recipe. Only lab staff and managers allowed."""
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     try:
         experiment_type = ExperimentType.objects.get(pk=payload.experiment_type_id)
@@ -236,14 +239,14 @@ def create_recipe(request: HttpRequest, payload: RecipeIn):
 def get_recipe(request: HttpRequest, recipe_id: int):
     """Get a single recipe by ID."""
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     try:
         recipe = Recipe.objects.select_related("experiment_type").get(
             pk=recipe_id, is_active=True
         )
     except Recipe.DoesNotExist:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     return 200, RecipeOut.from_recipe(recipe)
 
@@ -259,14 +262,14 @@ def update_recipe(
 ):
     """Partially update a recipe. Only lab staff and managers allowed."""
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     try:
         recipe = Recipe.objects.select_related("experiment_type").get(
             pk=recipe_id, is_active=True
         )
     except Recipe.DoesNotExist:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     updates = payload.model_dump(exclude_unset=True, exclude_none=True)
     for field, value in updates.items():
@@ -285,14 +288,14 @@ def update_recipe(
 def delete_recipe(request: HttpRequest, recipe_id: int):
     """Soft-delete a recipe. Only lab staff and managers allowed."""
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     try:
         recipe = Recipe.objects.select_related("experiment_type").get(
             pk=recipe_id, is_active=True
         )
     except Recipe.DoesNotExist:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     recipe.is_active = False
     recipe.save(update_fields=["is_active"])

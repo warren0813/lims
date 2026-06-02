@@ -1,6 +1,8 @@
 from django.contrib.auth.models import User
 from django.db import models
 
+_EXPERIMENT_TYPE = "experiments.ExperimentType"
+
 
 class WaferSize(models.TextChoices):
     SIZE_200MM = "200mm", "200mm"
@@ -58,7 +60,7 @@ class Request(models.Model):
         default=RequestUrgency.ONE_WEEK,
     )
     experiment_types = models.ManyToManyField(
-        "experiments.ExperimentType",
+        _EXPERIMENT_TYPE,
         through="RequestExperiment",
         related_name="requests",
     )
@@ -87,9 +89,7 @@ class RequestExperiment(models.Model):
     request = models.ForeignKey(
         Request, on_delete=models.CASCADE, related_name="request_experiments"
     )
-    experiment_type = models.ForeignKey(
-        "experiments.ExperimentType", on_delete=models.PROTECT
-    )
+    experiment_type = models.ForeignKey(_EXPERIMENT_TYPE, on_delete=models.PROTECT)
     parameters = models.JSONField(default=dict, blank=True)
 
     class Meta:
@@ -106,7 +106,7 @@ class Sample(models.Model):
     wafer_id = models.CharField(max_length=100)
     wafer_size = models.CharField(max_length=10, choices=WaferSize.choices)
     experiment_types = models.ManyToManyField(
-        "experiments.ExperimentType",
+        _EXPERIMENT_TYPE,
         through="SampleExperiment",
         related_name="samples",
     )
@@ -145,9 +145,7 @@ class SampleExperiment(models.Model):
     sample = models.ForeignKey(
         Sample, on_delete=models.CASCADE, related_name="sample_experiments"
     )
-    experiment_type = models.ForeignKey(
-        "experiments.ExperimentType", on_delete=models.PROTECT
-    )
+    experiment_type = models.ForeignKey(_EXPERIMENT_TYPE, on_delete=models.PROTECT)
 
     class Meta:
         db_table = "sample_experiment"

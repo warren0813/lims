@@ -14,6 +14,9 @@ from apps.experiments.schemas import (
     ExperimentTypeUpdate,
 )
 
+_PERMISSION_DENIED = "Permission denied"
+_NOT_FOUND = "Not found"
+
 router = Router(tags=["Experiment Types"], auth=JWTAuth())
 
 
@@ -49,7 +52,7 @@ def list_experiment_types(
 def create_experiment_type(request: HttpRequest, payload: ExperimentTypeIn):
     """Create a new experiment type. Only lab staff and managers allowed."""
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     try:
         exp = ExperimentType.objects.create(
@@ -69,7 +72,7 @@ def get_experiment_type(request: HttpRequest, experiment_type_id: int):
     try:
         exp = ExperimentType.objects.get(pk=experiment_type_id, is_active=True)
     except ExperimentType.DoesNotExist:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     return 200, exp
 
@@ -85,12 +88,12 @@ def update_experiment_type(
 ):
     """Partially update an experiment type. Only lab staff and managers allowed."""
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     try:
         exp = ExperimentType.objects.get(pk=experiment_type_id, is_active=True)
     except ExperimentType.DoesNotExist:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(exp, field, value)
@@ -110,12 +113,12 @@ def update_experiment_type(
 def delete_experiment_type(request: HttpRequest, experiment_type_id: int):
     """Soft-delete an experiment type. Only lab staff and managers allowed."""
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     try:
         exp = ExperimentType.objects.get(pk=experiment_type_id, is_active=True)
     except ExperimentType.DoesNotExist:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     exp.is_active = False
     exp.save()
