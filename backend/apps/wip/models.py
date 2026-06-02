@@ -1,6 +1,9 @@
 from django.contrib.auth.models import User
 from django.db import models
 
+_EXPERIMENT_TYPE = "experiments.ExperimentType"
+_SAMPLE_MODEL = "commissions.Sample"
+
 
 class WIPStatus(models.TextChoices):
     CREATED = "created", "已建立"
@@ -47,12 +50,12 @@ class WIP(models.Model):
     """
 
     experiment_type = models.ForeignKey(
-        "experiments.ExperimentType",
+        _EXPERIMENT_TYPE,
         on_delete=models.PROTECT,
         related_name="wips",
     )
     samples = models.ManyToManyField(
-        "commissions.Sample",
+        _SAMPLE_MODEL,
         through="WIPSample",
         related_name="wips",
     )
@@ -82,7 +85,7 @@ class WIPSample(models.Model):
 
     wip = models.ForeignKey(WIP, on_delete=models.CASCADE, related_name="wip_samples")
     sample = models.ForeignKey(
-        "commissions.Sample",
+        _SAMPLE_MODEL,
         on_delete=models.PROTECT,
         related_name="wip_samples",
     )
@@ -101,7 +104,7 @@ class Dispatch(models.Model):
 
     wip = models.ForeignKey(WIP, on_delete=models.CASCADE, related_name="dispatches")
     experiment_type = models.ForeignKey(
-        "experiments.ExperimentType",
+        _EXPERIMENT_TYPE,
         on_delete=models.PROTECT,
         related_name="dispatches",
     )
@@ -187,12 +190,12 @@ class SampleExperimentStatus(models.Model):
     """Tracks per-sample, per-experiment-type completion status."""
 
     sample = models.ForeignKey(
-        "commissions.Sample",
+        _SAMPLE_MODEL,
         on_delete=models.CASCADE,
         related_name="experiment_statuses",
     )
     experiment_type = models.ForeignKey(
-        "experiments.ExperimentType",
+        _EXPERIMENT_TYPE,
         on_delete=models.PROTECT,
         related_name="sample_statuses",
     )

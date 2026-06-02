@@ -76,6 +76,23 @@ from apps.wip.state_machine import validate_dispatch_transition, validate_wip_tr
 
 from .decorators import role_required
 
+# Deduplicated string literals reused across views (URL names, templates,
+# redirect paths, and messages).
+_URL_DASHBOARD = "web:dashboard"
+_URL_LOGIN = "web:login"
+_URL_REQUEST_DETAIL = "web:request-detail"
+_URL_MANAGER_REQUEST_DETAIL = "web:manager-request-detail"
+_URL_WIP_DETAIL = "web:wip-detail"
+_URL_DISPATCH_DETAIL = "web:dispatch-detail"
+_URL_EQUIPMENT_DETAIL = "web:equipment-detail"
+_URL_RECIPES = "web:recipes"
+_TPL_REQUEST_CREATE = "web/requests/create.html"
+_TPL_REPORT_UTILIZATION = "web/reports/_utilization.html"
+_PATH_WIPS = "/wips/"
+_PATH_SAMPLES = "/samples/"
+_MSG_NEW_REQUEST = "New Request"
+_MSG_INVALID_DATE_RANGE = "Invalid date range."
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -113,7 +130,7 @@ def _request_prefetch_qs() -> Any:
 
 def login_view(request: HttpRequest) -> HttpResponse:
     if request.user.is_authenticated:
-        return redirect("web:dashboard")
+        return redirect(_URL_DASHBOARD)
 
     error = None
     if request.method == "POST":
@@ -122,7 +139,7 @@ def login_view(request: HttpRequest) -> HttpResponse:
         user = authenticate(request, username=username, password=password)
         if user is not None:
             login(request, user)
-            return redirect("web:dashboard")
+            return redirect(_URL_DASHBOARD)
         error = "Invalid username or password."
 
     return render(request, "web/login.html", {"error": error})
@@ -130,7 +147,7 @@ def login_view(request: HttpRequest) -> HttpResponse:
 
 def logout_view(request: HttpRequest) -> HttpResponse:
     logout(request)
-    return redirect("web:login")
+    return redirect(_URL_LOGIN)
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +179,7 @@ def _sync_linked_sessions(session: SessionStore, new_entries: list[dict]) -> Non
 def add_account_view(request: HttpRequest) -> HttpResponse:
     """Add a second (or more) account to the current browser session."""
     if not request.user.is_authenticated:
-        return redirect("web:login")
+        return redirect(_URL_LOGIN)
 
     error = None
     if request.method == "POST":
@@ -199,7 +216,7 @@ def add_account_view(request: HttpRequest) -> HttpResponse:
                 current_linked.append(_account_entry(new_user, new_session.session_key))
                 request.session["_linked_sessions"] = current_linked
 
-                return redirect("web:dashboard")
+                return redirect(_URL_DASHBOARD)
 
     return render(request, "web/add_account.html", {"error": error})
 
@@ -207,12 +224,12 @@ def add_account_view(request: HttpRequest) -> HttpResponse:
 def switch_account_view(request: HttpRequest, user_id: int) -> HttpResponse:
     """Switch the active session to a linked account."""
     if not request.user.is_authenticated:
-        return redirect("web:login")
+        return redirect(_URL_LOGIN)
 
     linked: list[dict] = request.session.get("_linked_sessions", [])
     target = next((a for a in linked if a["user_id"] == user_id), None)
     if target is None:
-        return redirect("web:dashboard")
+        return redirect(_URL_DASHBOARD)
 
     # Verify target session is still alive
     target_session = SessionStore(session_key=target["session_key"])
@@ -221,7 +238,7 @@ def switch_account_view(request: HttpRequest, user_id: int) -> HttpResponse:
         request.session["_linked_sessions"] = [
             a for a in linked if a["user_id"] != user_id
         ]
-        return redirect("web:dashboard")
+        return redirect(_URL_DASHBOARD)
 
     # Sync target session's linked list so it includes the current user
     target_linked: list[dict] = target_session.get("_linked_sessions", [])
@@ -239,7 +256,7 @@ def switch_account_view(request: HttpRequest, user_id: int) -> HttpResponse:
         "httponly": settings.SESSION_COOKIE_HTTPONLY,
         "samesite": settings.SESSION_COOKIE_SAMESITE,
     }
-    response = redirect("web:dashboard")
+    response = redirect(_URL_DASHBOARD)
     response.set_cookie(
         settings.SESSION_COOKIE_NAME, target["session_key"], **cookie_settings
     )
@@ -250,7 +267,7 @@ def switch_account_view(request: HttpRequest, user_id: int) -> HttpResponse:
 def remove_account_view(request: HttpRequest, user_id: int) -> HttpResponse:
     """Remove a linked account from the current browser session."""
     if not request.user.is_authenticated:
-        return redirect("web:login")
+        return redirect(_URL_LOGIN)
 
     linked: list[dict] = request.session.get("_linked_sessions", [])
     target = next((a for a in linked if a["user_id"] == user_id), None)
@@ -262,12 +279,12 @@ def remove_account_view(request: HttpRequest, user_id: int) -> HttpResponse:
             a for a in linked if a["user_id"] != user_id
         ]
 
-    return redirect("web:dashboard")
+    return redirect(_URL_DASHBOARD)
 
 
 def dashboard_view(request: HttpRequest) -> HttpResponse:
     if not request.user.is_authenticated:
-        return redirect("web:login")
+        return redirect(_URL_LOGIN)
 
     role = _user_role(request)
     today = date.today()
@@ -505,9 +522,9 @@ def request_create(request: HttpRequest) -> HttpResponse:
         )
         return render(
             request,
-            "web/requests/create.html",
+            _TPL_REQUEST_CREATE,
             {
-                "title": "New Request",
+                "title": _MSG_NEW_REQUEST,
                 "experiment_types": exp_types,
                 "wafer_sizes": WaferSize.choices,
             },
@@ -539,9 +556,9 @@ def request_create(request: HttpRequest) -> HttpResponse:
         )
         return render(
             request,
-            "web/requests/create.html",
+            _TPL_REQUEST_CREATE,
             {
-                "title": "New Request",
+                "title": _MSG_NEW_REQUEST,
                 "experiment_types": exp_types,
                 "wafer_sizes": WaferSize.choices,
                 "errors": errors,
@@ -554,9 +571,9 @@ def request_create(request: HttpRequest) -> HttpResponse:
         errors.append("One or more selected experiment types are invalid.")
         return render(
             request,
-            "web/requests/create.html",
+            _TPL_REQUEST_CREATE,
             {
-                "title": "New Request",
+                "title": _MSG_NEW_REQUEST,
                 "experiment_types": ExperimentType.objects.filter(
                     is_active=True
                 ).order_by("lab_category", "name"),
@@ -588,7 +605,7 @@ def request_create(request: HttpRequest) -> HttpResponse:
                 wafer_size=s.get("wafer_size", WaferSize.SIZE_200MM),
             )
 
-    return redirect("web:request-detail", request_id=req.pk)
+    return redirect(_URL_REQUEST_DETAIL, request_id=req.pk)
 
 
 @role_required("fab_user")
@@ -619,7 +636,7 @@ def request_submit(request: HttpRequest, request_id: int) -> HttpResponse:
         req.status = target
         req.submitted_at = timezone.now()
         req.save()
-    return redirect("web:request-detail", request_id=request_id)
+    return redirect(_URL_REQUEST_DETAIL, request_id=request_id)
 
 
 @role_required("fab_user")
@@ -641,7 +658,7 @@ def request_ship(request: HttpRequest, request_id: int) -> HttpResponse:
         req.samples.filter(status=SampleStatus.CREATED).update(
             status=SampleStatus.SHIPPED
         )
-    return redirect("web:request-detail", request_id=request_id)
+    return redirect(_URL_REQUEST_DETAIL, request_id=request_id)
 
 
 @role_required("fab_user")
@@ -717,7 +734,7 @@ def request_approve(request: HttpRequest, request_id: int) -> HttpResponse:
             action=ApprovalLog.Action.APPROVE,
             comment=request.POST.get("comment", ""),
         )
-    return redirect("web:manager-request-detail", request_id=request_id)
+    return redirect(_URL_MANAGER_REQUEST_DETAIL, request_id=request_id)
 
 
 @role_required("lab_manager")
@@ -740,7 +757,7 @@ def request_return(request: HttpRequest, request_id: int) -> HttpResponse:
             action=ApprovalLog.Action.RETURN,
             comment=comment,
         )
-    return redirect("web:manager-request-detail", request_id=request_id)
+    return redirect(_URL_MANAGER_REQUEST_DETAIL, request_id=request_id)
 
 
 @role_required("lab_manager")
@@ -763,7 +780,7 @@ def request_reject(request: HttpRequest, request_id: int) -> HttpResponse:
             action=ApprovalLog.Action.REJECT,
             comment=comment,
         )
-    return redirect("web:manager-request-detail", request_id=request_id)
+    return redirect(_URL_MANAGER_REQUEST_DETAIL, request_id=request_id)
 
 
 @role_required("lab_manager")
@@ -780,7 +797,7 @@ def request_close(request: HttpRequest, request_id: int) -> HttpResponse:
         req.status = target
         req.closed_at = timezone.now()
         req.save()
-    return redirect("web:manager-request-detail", request_id=request_id)
+    return redirect(_URL_MANAGER_REQUEST_DETAIL, request_id=request_id)
 
 
 @role_required("lab_manager")
@@ -857,7 +874,7 @@ def _sample_action(
 @role_required("lab_staff", "lab_manager")
 @require_POST
 def sample_receive(request: HttpRequest, sample_id: int) -> HttpResponse:
-    return _sample_action(request, sample_id, "receive", "/samples/")
+    return _sample_action(request, sample_id, "receive", _PATH_SAMPLES)
 
 
 @role_required("lab_staff", "lab_manager")
@@ -865,26 +882,26 @@ def sample_receive(request: HttpRequest, sample_id: int) -> HttpResponse:
 def sample_reject_receiving(request: HttpRequest, sample_id: int) -> HttpResponse:
     note = request.POST.get("reason", "").strip()
     return _sample_action(
-        request, sample_id, "reject_receiving", "/samples/", note=note
+        request, sample_id, "reject_receiving", _PATH_SAMPLES, note=note
     )
 
 
 @role_required("lab_staff", "lab_manager")
 @require_POST
 def sample_report_lost(request: HttpRequest, sample_id: int) -> HttpResponse:
-    return _sample_action(request, sample_id, "report_lost", "/samples/")
+    return _sample_action(request, sample_id, "report_lost", _PATH_SAMPLES)
 
 
 @role_required("lab_staff", "lab_manager")
 @require_POST
 def sample_void(request: HttpRequest, sample_id: int) -> HttpResponse:
-    return _sample_action(request, sample_id, "void", "/samples/")
+    return _sample_action(request, sample_id, "void", _PATH_SAMPLES)
 
 
 @role_required("lab_staff", "lab_manager")
 @require_POST
 def sample_return(request: HttpRequest, sample_id: int) -> HttpResponse:
-    return _sample_action(request, sample_id, "return", "/samples/")
+    return _sample_action(request, sample_id, "return", _PATH_SAMPLES)
 
 
 # ---------------------------------------------------------------------------
@@ -934,22 +951,24 @@ def wip_create(request: HttpRequest) -> HttpResponse:
             pk=experiment_type_id, is_active=True
         )
     except (ExperimentType.DoesNotExist, ValueError):
-        return _action_error(request, "Invalid experiment type.", redirect_url="/wips/")
+        return _action_error(
+            request, "Invalid experiment type.", redirect_url=_PATH_WIPS
+        )
 
     if not sample_ids:
-        return _action_error(request, "No samples selected.", redirect_url="/wips/")
+        return _action_error(request, "No samples selected.", redirect_url=_PATH_WIPS)
 
     try:
         selected_sample_ids = [int(sample_id) for sample_id in sample_ids]
     except ValueError:
-        return _action_error(request, "Invalid sample.", redirect_url="/wips/")
+        return _action_error(request, "Invalid sample.", redirect_url=_PATH_WIPS)
 
     samples, error = validate_samples_for_wip(selected_sample_ids, experiment_type)
     if error:
         return _action_error(
             request,
             error,
-            redirect_url="/wips/",
+            redirect_url=_PATH_WIPS,
         )
 
     for sample in samples:
@@ -961,7 +980,7 @@ def wip_create(request: HttpRequest) -> HttpResponse:
             return _action_error(
                 request,
                 f"Sample {sample.wafer_id}: {e}",
-                redirect_url="/wips/",
+                redirect_url=_PATH_WIPS,
             )
 
     with transaction.atomic():
@@ -983,7 +1002,7 @@ def wip_create(request: HttpRequest) -> HttpResponse:
                     raise
                 sample.save(update_fields=["status", "updated_at"])
 
-    return redirect("web:wip-detail", wip_id=wip.pk)
+    return redirect(_URL_WIP_DETAIL, wip_id=wip.pk)
 
 
 @role_required("lab_staff", "lab_manager")
@@ -1071,7 +1090,7 @@ def wip_complete(request: HttpRequest, wip_id: int) -> HttpResponse:
                 except InvalidTransitionError:
                     pass
 
-    return redirect("web:wip-detail", wip_id=wip_id)
+    return redirect(_URL_WIP_DETAIL, wip_id=wip_id)
 
 
 @role_required("lab_staff", "lab_manager")
@@ -1098,7 +1117,7 @@ def wip_abort(request: HttpRequest, wip_id: int) -> HttpResponse:
                 sample.save(update_fields=["status", "updated_at"])
             except InvalidTransitionError:
                 pass
-    return redirect("web:wip-detail", wip_id=wip_id)
+    return redirect(_URL_WIP_DETAIL, wip_id=wip_id)
 
 
 # ---------------------------------------------------------------------------
@@ -1211,7 +1230,7 @@ def dispatch_create(request: HttpRequest, wip_id: int) -> HttpResponse:
             status=SampleExperimentProgress.PENDING,
         ).update(status=SampleExperimentProgress.IN_PROGRESS)
 
-    return redirect("web:wip-detail", wip_id=wip_id)
+    return redirect(_URL_WIP_DETAIL, wip_id=wip_id)
 
 
 @role_required("lab_staff", "lab_manager")
@@ -1263,7 +1282,7 @@ def _dispatch_action(
         # before the operator finalises a comment.
         if action == "unload":
             update_experiment_statuses_on_unload(dispatch)
-    return redirect("web:dispatch-detail", dispatch_id=dispatch_id)
+    return redirect(_URL_DISPATCH_DETAIL, dispatch_id=dispatch_id)
 
 
 @role_required("lab_staff", "lab_manager")
@@ -1310,7 +1329,7 @@ def dispatch_record_result(request: HttpRequest, dispatch_id: int) -> HttpRespon
             comment=comment,
             recorded_by=request.user,
         )
-    return redirect("web:dispatch-detail", dispatch_id=dispatch_id)
+    return redirect(_URL_DISPATCH_DETAIL, dispatch_id=dispatch_id)
 
 
 @role_required("lab_staff", "lab_manager")
@@ -1337,7 +1356,7 @@ def dispatch_report_exception(request: HttpRequest, dispatch_id: int) -> HttpRes
         if note:
             dispatch.note = (dispatch.note + f"\n[Exception] {note}").strip()
         dispatch.save()
-    return redirect("web:dispatch-detail", dispatch_id=dispatch_id)
+    return redirect(_URL_DISPATCH_DETAIL, dispatch_id=dispatch_id)
 
 
 @role_required("lab_staff", "lab_manager")
@@ -1365,7 +1384,7 @@ def dispatch_redispatch(request: HttpRequest, dispatch_id: int) -> HttpResponse:
             note=f"Redispatch of #{old_dispatch.pk}",
             created_by=request.user,
         )
-    return redirect("web:dispatch-detail", dispatch_id=new_dispatch.pk)
+    return redirect(_URL_DISPATCH_DETAIL, dispatch_id=new_dispatch.pk)
 
 
 @role_required("lab_staff", "lab_manager")
@@ -1495,7 +1514,7 @@ def equipment_create(request: HttpRequest) -> HttpResponse:
                 except ExperimentType.DoesNotExist:
                     pass
 
-    return redirect("web:equipment-detail", equipment_id=equipment.pk)
+    return redirect(_URL_EQUIPMENT_DETAIL, equipment_id=equipment.pk)
 
 
 @role_required("lab_manager")
@@ -1519,7 +1538,7 @@ def equipment_update(request: HttpRequest, equipment_id: int) -> HttpResponse:
     if status:
         equipment.status = status
     equipment.save()
-    return redirect("web:equipment-detail", equipment_id=equipment_id)
+    return redirect(_URL_EQUIPMENT_DETAIL, equipment_id=equipment_id)
 
 
 @role_required("lab_manager")
@@ -1537,7 +1556,7 @@ def equipment_set_capabilities(request: HttpRequest, equipment_id: int) -> HttpR
                 )
             except ExperimentType.DoesNotExist:
                 pass
-    return redirect("web:equipment-detail", equipment_id=equipment_id)
+    return redirect(_URL_EQUIPMENT_DETAIL, equipment_id=equipment_id)
 
 
 # ---------------------------------------------------------------------------
@@ -1575,7 +1594,7 @@ def recipe_create(request: HttpRequest) -> HttpResponse:
     try:
         exp_type = ExperimentType.objects.get(pk=exp_type_id, is_active=True)
     except (ExperimentType.DoesNotExist, ValueError):
-        return redirect("web:recipes")
+        return redirect(_URL_RECIPES)
 
     try:
         params = json.loads(params_raw) if params_raw else {}
@@ -1588,7 +1607,7 @@ def recipe_create(request: HttpRequest) -> HttpResponse:
         experiment_type=exp_type,
         parameters=params,
     )
-    return redirect("web:recipes")
+    return redirect(_URL_RECIPES)
 
 
 @role_required("lab_manager")
@@ -1609,7 +1628,7 @@ def recipe_update(request: HttpRequest, recipe_id: int) -> HttpResponse:
         except json.JSONDecodeError:
             pass
     recipe.save()
-    return redirect("web:recipes")
+    return redirect(_URL_RECIPES)
 
 
 @role_required("lab_manager")
@@ -1618,7 +1637,7 @@ def recipe_delete(request: HttpRequest, recipe_id: int) -> HttpResponse:
     recipe = get_object_or_404(Recipe, pk=recipe_id)
     recipe.is_active = False
     recipe.save()
-    return redirect("web:recipes")
+    return redirect(_URL_RECIPES)
 
 
 # ---------------------------------------------------------------------------
@@ -1644,8 +1663,8 @@ def reports_utilization(request: HttpRequest) -> HttpResponse:
     except (ValueError, TypeError):
         return render(
             request,
-            "web/reports/_utilization.html",
-            {"error": "Invalid date range."},
+            _TPL_REPORT_UTILIZATION,
+            {"error": _MSG_INVALID_DATE_RANGE},
         )
 
     try:
@@ -1653,13 +1672,13 @@ def reports_utilization(request: HttpRequest) -> HttpResponse:
     except ValueError:
         return render(
             request,
-            "web/reports/_utilization.html",
-            {"error": "Invalid date range."},
+            _TPL_REPORT_UTILIZATION,
+            {"error": _MSG_INVALID_DATE_RANGE},
         )
 
     return render(
         request,
-        "web/reports/_utilization.html",
+        _TPL_REPORT_UTILIZATION,
         {
             "data": data,
             "period": period,
@@ -1681,7 +1700,7 @@ def reports_statistics(request: HttpRequest) -> HttpResponse:
         return render(
             request,
             "web/reports/_statistics.html",
-            {"error": "Invalid date range."},
+            {"error": _MSG_INVALID_DATE_RANGE},
         )
 
     base_qs = Request.objects.filter(

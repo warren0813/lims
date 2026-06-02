@@ -48,6 +48,9 @@ from apps.commissions.state_machine import (
 from apps.experiments.models import ExperimentType
 from apps.wip.models import SampleExperimentStatus
 
+_PERMISSION_DENIED = "Permission denied"
+_NOT_FOUND = "Not found"
+
 router = Router(tags=["Requests"], auth=JWTAuth())
 sample_router = Router(tags=["Samples"], auth=JWTAuth())
 
@@ -176,12 +179,12 @@ def _lab_sample_action(
       after the sample is saved (e.g. auto-transition the parent request)
     """
     if not has_lab_role(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     try:
         sample = Sample.objects.select_related("request").get(pk=sample_id)
     except Sample.DoesNotExist:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     with transaction.atomic():
         sample = Sample.objects.select_for_update().get(pk=sample.pk)
@@ -303,7 +306,7 @@ def get_request(request: HttpRequest, request_id: int):
     role = _get_user_role(request)
     req = _get_request_for_user(request_id, request.auth, role, prefetch=True)
     if req is None:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     return 200, RequestDetailOut.from_request(req)
 
@@ -329,7 +332,7 @@ def update_request(request: HttpRequest, request_id: int, payload: RequestUpdate
     role = _get_user_role(request)
     req = _get_request_for_user(request_id, request.auth, role)
     if req is None:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     if req.requester != request.auth:
         return 403, {"detail": "Only the requester can update this request"}
@@ -442,7 +445,7 @@ def submit_request(request: HttpRequest, request_id: int):
     role = _get_user_role(request)
     req = _get_request_for_user(request_id, request.auth, role)
     if req is None:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     if req.requester != request.auth:
         return 403, {"detail": "Only the requester can submit this request"}
@@ -475,7 +478,7 @@ def approve_request(request: HttpRequest, request_id: int):
 
     req = _get_request_for_user(request_id, request.auth, Role.LAB_MANAGER)
     if req is None:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     with transaction.atomic():
         req = Request.objects.select_for_update().get(pk=req.pk)
@@ -508,7 +511,7 @@ def return_request(request: HttpRequest, request_id: int, payload: CommentIn):
 
     req = _get_request_for_user(request_id, request.auth, Role.LAB_MANAGER)
     if req is None:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     with transaction.atomic():
         req = Request.objects.select_for_update().get(pk=req.pk)
@@ -542,7 +545,7 @@ def reject_request(request: HttpRequest, request_id: int, payload: CommentIn):
 
     req = _get_request_for_user(request_id, request.auth, Role.LAB_MANAGER)
     if req is None:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     with transaction.atomic():
         req = Request.objects.select_for_update().get(pk=req.pk)
@@ -574,7 +577,7 @@ def ship_request(request: HttpRequest, request_id: int):
     role = _get_user_role(request)
     req = _get_request_for_user(request_id, request.auth, role)
     if req is None:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     if req.requester != request.auth:
         return 403, {"detail": "Only the requester can ship this request"}
@@ -613,10 +616,10 @@ def cancel_request(request: HttpRequest, request_id: int, payload: ReasonIn):
     elif role == Role.LAB_MANAGER:
         req = _get_request_for_user(request_id, request.auth, Role.LAB_MANAGER)
     else:
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     if req is None:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     with transaction.atomic():
         req = Request.objects.select_for_update().get(pk=req.pk)
@@ -645,7 +648,7 @@ def close_request(request: HttpRequest, request_id: int):
 
     req = _get_request_for_user(request_id, request.auth, Role.LAB_MANAGER)
     if req is None:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     with transaction.atomic():
         req = Request.objects.select_for_update().get(pk=req.pk)
@@ -674,7 +677,7 @@ def delete_draft(request: HttpRequest, request_id: int):
 
     req = _get_request_for_user(request_id, request.auth, Role.FAB_USER)
     if req is None:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     if req.status != RequestStatus.DRAFT:
         return 400, {"detail": "Only draft requests can be deleted"}
@@ -732,7 +735,7 @@ def get_sample(request: HttpRequest, sample_id: int):
     _finalize_due_dispatches()
     sample = _get_sample_for_user(sample_id, request)
     if sample is None:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     return 200, SampleDetailOut.from_sample(sample)
 
@@ -761,7 +764,7 @@ def sample_experiments(request: HttpRequest, sample_id: int):
 
     sample = _get_sample_for_user(sample_id, request)
     if sample is None:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     sample_experiments = list(
         sample.sample_experiments.select_related("experiment_type").order_by(
@@ -947,7 +950,7 @@ def get_sample_experiment_status(request: HttpRequest, sample_id: int):
     _finalize_due_dispatches()
     sample = _get_sample_for_user(sample_id, request)
     if sample is None:
-        return 404, {"detail": "Not found"}
+        return 404, {"detail": _NOT_FOUND}
 
     statuses = (
         SampleExperimentStatus.objects.filter(sample=sample)

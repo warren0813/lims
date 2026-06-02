@@ -1,6 +1,8 @@
 from django.core.validators import MinValueValidator
 from django.db import models
 
+_EXPERIMENT_TYPE = "experiments.ExperimentType"
+
 
 class EquipmentStatus(models.TextChoices):
     AVAILABLE = "available", "可用"
@@ -20,7 +22,7 @@ class Equipment(models.Model):
         default=EquipmentStatus.AVAILABLE,
     )
     capabilities = models.ManyToManyField(
-        "experiments.ExperimentType",
+        _EXPERIMENT_TYPE,
         through="EquipmentCapability",
         related_name="equipments",
     )
@@ -39,9 +41,7 @@ class EquipmentCapability(models.Model):
     """Through model mapping equipment to the experiment types it can perform."""
 
     equipment = models.ForeignKey(Equipment, on_delete=models.CASCADE)
-    experiment_type = models.ForeignKey(
-        "experiments.ExperimentType", on_delete=models.CASCADE
-    )
+    experiment_type = models.ForeignKey(_EXPERIMENT_TYPE, on_delete=models.CASCADE)
 
     class Meta:
         db_table = "equipment_capability"
@@ -62,7 +62,7 @@ class Recipe(models.Model):
     description = models.TextField(blank=True)
     parameters = models.JSONField(default=dict)
     experiment_type = models.ForeignKey(
-        "experiments.ExperimentType",
+        _EXPERIMENT_TYPE,
         on_delete=models.CASCADE,
         related_name="recipes",
     )

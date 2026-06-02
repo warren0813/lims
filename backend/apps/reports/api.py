@@ -24,6 +24,8 @@ from apps.reports.services import (
     equipment_utilization_trend,
 )
 
+_PERMISSION_DENIED = "Permission denied"
+
 router = Router(tags=["Reports"], auth=JWTAuth())
 
 
@@ -49,7 +51,7 @@ def equipment_utilization(
 ) -> tuple:
     """Return equipment utilization statistics. Lab Manager only."""
     if not _is_lab_manager(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     try:
         data = equipment_utilization_rows(start_date, end_date, equipment_id)
@@ -75,7 +77,7 @@ def dispatch_results(
 ) -> tuple:
     """Return dispatch status/result rows for the selected date range."""
     if not _is_lab_manager(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     try:
         data = dispatch_result_rows(start_date, end_date)
@@ -102,7 +104,7 @@ def request_statistics(
 ) -> tuple:
     """Return request statistics for a date range. Lab Manager only."""
     if not _is_lab_manager(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     base_qs = Request.objects.filter(
         created_at__date__gte=start_date,
@@ -195,7 +197,7 @@ def trends(
     series of length ``days`` without client-side gap filling.
     """
     if not _is_lab_manager(request):
-        return 403, {"detail": "Permission denied"}
+        return 403, {"detail": _PERMISSION_DENIED}
 
     if metric not in _TREND_METRICS:
         return 400, {"detail": f"Unknown metric '{metric}'"}
