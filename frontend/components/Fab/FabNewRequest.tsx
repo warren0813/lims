@@ -21,6 +21,8 @@ import type { Navigate, ShowToast } from '@/lib/types';
 const F = I;
 type RequestDetail = Awaited<ReturnType<typeof api.requests.get>>;
 type WaferEntry = { wafer: string; size: string; expIds: number[] };
+const toggleExpId = (expIds: number[], expId: number): number[] =>
+  expIds.includes(expId) ? expIds.filter((x: number) => x !== expId) : [...expIds, expId];
 const FabNewRequest = ({
   navigate,
   draft = null,
@@ -57,14 +59,7 @@ const FabNewRequest = ({
   const toggleExp = (i: number, expId: number) =>
     setWafers((w) =>
       w.map((s: WaferEntry, j: number) =>
-        j === i
-          ? {
-              ...s,
-              expIds: s.expIds.includes(expId)
-                ? s.expIds.filter((x: number) => x !== expId)
-                : [...s.expIds, expId],
-            }
-          : s,
+        j === i ? { ...s, expIds: toggleExpId(s.expIds, expId) } : s,
       ),
     );
   const totalExp = wafers.reduce((acc: number, w: WaferEntry) => acc + w.expIds.length, 0);

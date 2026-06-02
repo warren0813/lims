@@ -16,13 +16,11 @@ const useDispatchCreationData = (experimentId: number | string | null | undefine
       return;
     }
     setLoading(true);
+    const matchesExperiment = (e: Equipment) =>
+      (e.capabilities || []).some((c: { id: number }) => c.id === experimentId);
     Promise.all([api.equipment.list(), api.recipes.list()])
       .then(([eqs, recs]) => {
-        setEquipment(
-          eqs.filter((e: Equipment) =>
-            (e.capabilities || []).some((c: { id: number }) => c.id === experimentId),
-          ),
-        );
+        setEquipment(eqs.filter(matchesExperiment));
         setRecipes(recs.filter((r: Recipe) => r.experimentId === experimentId));
         setError(null);
       })
