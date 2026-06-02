@@ -15,12 +15,16 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
-    include: ['components/**/*.test.{ts,tsx}', 'lib/**/*.test.{ts,tsx}'],
+    include: [
+      'components/**/*.test.{ts,tsx}',
+      'lib/**/*.test.{ts,tsx}',
+      'app/**/*.test.{ts,tsx}',
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary', 'html'],
       reportsDirectory: './coverage',
-      include: ['components/**/*.{ts,tsx}', 'lib/**/*.{ts,tsx}'],
+      include: ['components/**/*.{ts,tsx}', 'lib/**/*.{ts,tsx}', 'app/**/*.{ts,tsx}'],
       exclude: [
         '**/*.test.{ts,tsx,mjs}',
         '**/*.d.ts',
@@ -28,13 +32,14 @@ export default defineConfig({
       ],
       thresholds: {
         // Progressive ratchet — these are FLOORS, not the target. Current global
-        // coverage is ~8% lines (utils + ui + lib covered; pages/hooks/api not
-        // yet). Raise these numbers as coverage climbs toward the 80% goal;
-        // never lower them. CI fails if coverage regresses below the floor.
-        lines: 8,
-        statements: 8,
-        functions: 4,
-        branches: 8,
+        // coverage is ~11% lines (utils + ui + lib + the app/ route pages now
+        // covered; layouts, the API proxy route, data hooks, and the API client
+        // are not yet). Raise these numbers as coverage climbs toward the 80%
+        // goal; never lower them. CI fails if coverage regresses below the floor.
+        lines: 11,
+        statements: 11,
+        functions: 5,
+        branches: 10,
         // Pure utils are fully covered — lock that in so they can't regress.
         'components/**/utils/**': {
           lines: 95,
