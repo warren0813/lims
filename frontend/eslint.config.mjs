@@ -11,6 +11,8 @@ const eslintConfig = defineConfig([
     'out/**',
     'build/**',
     'next-env.d.ts',
+    // Vitest coverage report output (generated, git-ignored).
+    'coverage/**',
   ]),
   {
     rules: {

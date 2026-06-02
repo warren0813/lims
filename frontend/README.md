@@ -20,6 +20,39 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Testing
+
+Unit and component tests run on [Vitest](https://vitest.dev) with
+[React Testing Library](https://testing-library.com/docs/react-testing-library/intro/)
+under jsdom (the setup Next.js officially recommends).
+
+```bash
+npm test           # run the suite once
+npm run test:watch # watch mode
+npm run coverage    # run with a V8 coverage report + thresholds
+```
+
+Conventions:
+
+- **Colocate** tests next to the code: `Button.tsx` → `Button.test.tsx`,
+  `addDays.ts` → `addDays.test.ts`. Vitest discovers `**/*.test.{ts,tsx}`
+  under `components/` and `lib/`.
+- Import the Testing Library surface from `@/test/render` and render with
+  `renderWithProviders` — it wraps components in app-wide providers (currently a
+  passthrough; new providers plug in there once and every test inherits them).
+- Use explicit `import { test, expect, vi } from 'vitest'` (no globals). The
+  jest-dom matchers (`toBeInTheDocument`, …) are registered in `vitest.setup.ts`.
+- For the two routing-aware components, mock `next/navigation` with the helpers
+  in `test/mocks/nextNavigation.ts`.
+
+### Coverage thresholds are a ratchet
+
+`vitest.config.mts` enforces coverage **floors**, not the target. Today the
+global floor is low (~8% lines) because only utils, `lib/`, and the `ui/` +
+pill components are covered; pages, data hooks, and the API client are not yet.
+The goal is **80%** — raise the floor numbers as coverage climbs, and never
+lower them. Pure utils are already locked at ≥95%.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
