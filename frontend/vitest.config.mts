@@ -31,16 +31,17 @@ export default defineConfig({
         'lib/api/types.gen.ts',
       ],
       thresholds: {
-        // Progressive ratchet — these are FLOORS, not the target. Current global
-        // coverage is ~65% lines: utils, ui, lib, the app/ route pages, every
-        // data hook, the lib/api client, and the screen + report components are
-        // now covered. Still uncovered: most modals, layouts, and the API proxy
-        // route. Raise these numbers as coverage climbs toward the 80% goal;
-        // never lower them. CI fails if coverage regresses below the floor.
-        lines: 63,
-        statements: 62,
-        functions: 60,
-        branches: 57,
+        // Progressive ratchet — these are FLOORS, not the target. The 80% line
+        // goal is now MET (~81% lines, ~79% statements). Components, hooks, the
+        // lib/api client, modals, the Tweaks subsystem, and the app/ route pages
+        // are covered. Still uncovered: layouts, the API proxy route, and a few
+        // deep timer/effect branches. Keep these floors at/near current coverage
+        // so it can't regress; raise them further as the stragglers land. Never
+        // lower them. CI fails if coverage drops below the floor.
+        lines: 80,
+        statements: 78,
+        functions: 76,
+        branches: 73,
         // Pure utils are fully covered — lock that in so they can't regress.
         'components/**/utils/**': {
           lines: 95,

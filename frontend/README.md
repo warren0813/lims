@@ -47,12 +47,14 @@ Conventions:
 
 ### Coverage thresholds are a ratchet
 
-`vitest.config.mts` enforces coverage **floors**, not the target. The global
-floor sits at ~65% lines: utils, `lib/`, the `ui/` components, the `app/` route
-pages, every data hook, the `lib/api` client, and the screen + report
-components are covered; most modals, layouts, and the API proxy route are not
-yet. The goal is **80%** — raise the floor numbers as coverage climbs, and never
-lower them. Pure utils are locked at ≥95% and the `lib/api` client at ≥90%.
+`vitest.config.mts` enforces coverage **floors**, not the target. The **80%
+line goal is met** (~81% lines, ~79% statements): utils, `lib/`, the `ui/`
+components, the `app/` route pages, every data hook, the `lib/api` client, the
+screen + report components, the modals, and the Tweaks subsystem are all
+covered. Still uncovered: layouts, the API proxy route, and a few deep
+timer/effect branches. The floors are pinned at/near current coverage so it
+can't regress — raise them further as the stragglers land, and never lower
+them. Pure utils are locked at ≥95% and the `lib/api` client at ≥90%.
 
 ## Learn More
 
