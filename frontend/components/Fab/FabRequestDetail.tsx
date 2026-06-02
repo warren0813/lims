@@ -16,6 +16,7 @@ import PlainCardHeader from '@/components/Fab/PlainCardHeader';
 import HistoryDot from '@/components/Fab/HistoryDot';
 import DetailWaferRow from '@/components/Fab/DetailWaferRow';
 import CancelRequestModal from '@/components/Fab/CancelRequestModal';
+import getWaferExperimentDisplay from '@/components/Fab/utils/waferExperimentDisplay';
 const F = I;
 type RequestDetail = Awaited<ReturnType<typeof api.requests.get>>;
 const FabRequestDetail = ({
@@ -457,15 +458,15 @@ const FabRequestDetail = ({
           {r.samples.map((s: SampleItem, si: number) => {
             type ExpRollupRow = {
               experimentTypeId: number | null;
+              experimentName: string;
               status: string;
               verdict: string | null;
             };
             const rollup = (expsBySample[s.id] || []) as ExpRollupRow[];
-            const rollupByExpId = new Map(
-              rollup.map((row) => [row.experimentTypeId, row] as const),
+            const { experiments: waferExperiments, total, doneCount } = getWaferExperimentDisplay(
+              exps,
+              rollup,
             );
-            const total = exps.length;
-            const doneCount = exps.filter((e) => rollupByExpId.get(e.id)?.status === 'done').length;
             return (
               <div
                 key={si}
@@ -511,10 +512,9 @@ const FabRequestDetail = ({
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {exps.map((e) => {
-                      const row = rollupByExpId.get(e.id);
-                      const st = row?.status || 'pending';
-                      const v = row?.verdict || null;
+                    {waferExperiments.map((e) => {
+                      const st = e.status;
+                      const v = e.verdict;
                       const done = st === 'done';
                       const fail = done && v === 'fail';
                       return (
