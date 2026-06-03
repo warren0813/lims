@@ -21,6 +21,30 @@ import { accent as mAccent } from '@/lib/colors';
 import ApprovalModal from '@/components/Manager/ApprovalModal';
 import type { Navigate, ShowToast } from '@/lib/types';
 const MI = I;
+
+type RequestSampleExperimentProgress = {
+  experimentTypeId: number;
+  experimentName: string;
+  status: string;
+  verdict: string | null;
+  dispatchId: number | null;
+};
+
+type RequestSampleProgressSource = {
+  expIds?: number[];
+  experiments?: RequestSampleExperimentProgress[];
+};
+
+type RequestSampleExperimentChip = {
+  id: number;
+  name: string;
+  code: string;
+  group: string;
+  status: string;
+  verdict: string | null;
+  dispatchId: number | null;
+};
+
 const MgrRequestDetail = ({
   id,
   navigate,
@@ -102,7 +126,7 @@ const MgrRequestDetail = ({
           .join('')
           .slice(0, 4)
           .toUpperCase()
-      : '—',
+      : '--',
     group: 'RA',
   }));
   const experimentById = new Map(exps.map((e) => [e.id, e]));
@@ -110,6 +134,40 @@ const MgrRequestDetail = ({
     (expIds || [])
       .map((expId) => experimentById.get(expId))
       .filter((e): e is (typeof exps)[number] => Boolean(e));
+  const experimentCode = (name: string) =>
+    name
+      ? name
+          .split(/\s+/)
+          .map((t) => t[0])
+          .join('')
+          .slice(0, 4)
+          .toUpperCase()
+      : '--';
+  const experimentProgress = (
+    sample: RequestSampleProgressSource,
+  ): RequestSampleExperimentChip[] => {
+    if (sample.experiments?.length) {
+      return sample.experiments.map((e) => ({
+        id: e.experimentTypeId,
+        name: e.experimentName,
+        code: experimentCode(e.experimentName),
+        group: 'RA',
+        status: e.status,
+        verdict: e.verdict,
+        dispatchId: e.dispatchId,
+      }));
+    }
+    return sampleExperiments(sample.expIds).map((e) => ({
+      ...e,
+      status: 'pending',
+      verdict: null as string | null,
+      dispatchId: null as number | null,
+    }));
+  };
+  const isExperimentDone = (e: RequestSampleExperimentChip) =>
+    e.status === 'completed' || e.status === 'done' || e.status === 'failed';
+  const isExperimentFailed = (e: RequestSampleExperimentChip) =>
+    isExperimentDone(e) && (e.verdict === 'fail' || e.status === 'failed');
   const canAct = r.status === 'submitted';
   const canComplete = r.status === 'in_progress';
   return (
@@ -354,15 +412,19 @@ const MgrRequestDetail = ({
       </Card>
 
       <Card padding={0}>
-        <CardHeader>Samples · Experiments</CardHeader>
+        <CardHeader>Experiments by Wafer</CardHeader>
         <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {r.samples.map((s, si) => (
+          {r.samples.map((s, si) => {
+            const experiments = experimentProgress(s);
+            const total = experiments.length;
+            const doneCount = experiments.filter(isExperimentDone).length;
+            return (
             <button
               key={si}
               onClick={() => navigate({ page: 'lab_wafer', id: s.id })}
               style={{
                 display: 'grid',
-                gridTemplateColumns: '180px 1fr 20px',
+                gridTemplateColumns: '180px 1fr 70px',
                 alignItems: 'center',
                 gap: 18,
                 padding: '14px 18px',
@@ -403,39 +465,91 @@ const MgrRequestDetail = ({
                 </div>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {sampleExperiments(s.expIds).map((e) => (
+                {experiments.map((e) => {
+                  const done = isExperimentDone(e);
+                  const fail = isExperimentFailed(e);
+                  return (
                   <span
                     key={e.id}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: 7,
-                      padding: '5px 11px 5px 6px',
+                      padding: '6px 12px 6px 7px',
                       borderRadius: 999,
-                      background: '#f5f5fa',
-                      border: `1px solid ${mLine}`,
+                      background: fail ? '#fde4e4' : done ? '#e7f6ec' : '#f4f4f7',
+                      border: `1px solid ${fail ? '#f4b4b9' : done ? '#9ad9b7' : 'rgba(0,0,0,0.08)'}`,
                     }}
                   >
                     <span
                       style={{
                         fontSize: 10,
                         fontWeight: 700,
-                        padding: '2px 6px',
+                        padding: '3px 7px',
                         borderRadius: 999,
-                        background: e.group === 'RA' ? '#e8e7f6' : '#d4eaf0',
-                        color: e.group === 'RA' ? '#5550a0' : '#2a7a91',
+                        background: fail ? '#a93445' : done ? '#157a4a' : '#cbcbd6',
+                        color: '#fff',
                         letterSpacing: '0.05em',
                       }}
                     >
                       {e.code}
                     </span>
-                    <span style={{ fontSize: 13, color: mInk, fontWeight: 500 }}>{e.name}</span>
+                    <span
+                      style={{
+                        fontSize: 13,
+                        color: fail ? '#5a1a22' : done ? '#1f3d2c' : '#a8a8b8',
+                        fontWeight: 500,
+                      }}
+                    >
+                      {e.name}
+                    </span>
+                    {fail ? (
+                      <MI.X size={13} color="#a93445" strokeWidth={3} />
+                    ) : done ? (
+                      <MI.Check size={13} color="#157a4a" strokeWidth={3} />
+                    ) : (
+                      <span
+                        style={{
+                          width: 13,
+                          height: 13,
+                          borderRadius: 999,
+                          border: '1.5px dashed #cbcbd6',
+                        }}
+                      />
+                    )}
                   </span>
-                ))}
+                  );
+                })}
               </div>
-              <MI.ChevronRight size={16} color={mMuted} />
+              <div style={{ textAlign: 'right' }}>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: doneCount === total && total > 0 ? '#157a4a' : mInk,
+                    letterSpacing: '-0.01em',
+                  }}
+                >
+                  {doneCount}
+                  <span style={{ color: '#a8a8b8', fontWeight: 500 }}>/{total}</span>
+                </div>
+                <div
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 600,
+                    color: mMuted,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    marginTop: 2,
+                  }}
+                >
+                  done
+                </div>
+              </div>
             </button>
-          ))}
+            );
+          })}
         </div>
       </Card>
 
@@ -448,5 +562,6 @@ const MgrRequestDetail = ({
     </Page>
   );
 };
+
 export default MgrRequestDetail;
 export { MgrRequestDetail };

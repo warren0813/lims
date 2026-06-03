@@ -372,6 +372,65 @@ test('requests.get normalizes nested samples (SAMPLE_STATUS_MAP) and approval hi
   expect(out.closed_at).toBeNull();
 });
 
+test('requests.get normalizes per-sample experiment progress when present', async () => {
+  fetchMock.mockResolvedValueOnce(
+    response({
+      id: 21,
+      title: 'Req with progress',
+      status: 'approved',
+      requester: { id: 1, username: 'fab' },
+      note: '',
+      created_at: '2026-01-02T03:04:00Z',
+      submitted_at: '2026-01-02T03:05:00Z',
+      updated_at: '2026-01-02T03:06:00Z',
+      completed_at: null,
+      closed_at: null,
+      experiment_types: [{ id: 9 }],
+      samples: [
+        {
+          id: 101,
+          wafer_id: 'W2',
+          wafer_size: '200mm',
+          status: 'completed',
+          experiment_type_ids: [9],
+          experiments: [
+            {
+              experiment_type_id: 9,
+              experiment_type_name: 'Final Test',
+              status: 'completed',
+              verdict: 'pass',
+              dispatch_id: 5,
+            },
+          ],
+        },
+      ],
+      approval_logs: [],
+    }),
+  );
+
+  const out = await api.requests.get(21);
+
+  expect(out.samples).toEqual([
+    {
+      id: 101,
+      wafer: 'W2',
+      size: '200mm',
+      status: 'completed',
+      raw_status: 'completed',
+      expIds: [9],
+      experiments: [
+        {
+          experimentTypeId: 9,
+          experimentName: 'Final Test',
+          status: 'completed',
+          verdict: 'pass',
+          dispatchId: 5,
+        },
+      ],
+    },
+  ]);
+});
+
 test('requests.create POSTs payload to trailing-slash URL and returns a detail shape', async () => {
   fetchMock.mockResolvedValueOnce(
     response({

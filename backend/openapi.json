@@ -1665,9 +1665,65 @@
         "title": "RequestListOut",
         "type": "object"
       },
+      "RequestSampleExperimentBriefOut": {
+        "description": "Per-sample experiment progress nested in request detail responses.",
+        "properties": {
+          "dispatch_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dispatch Id"
+          },
+          "experiment_type_id": {
+            "title": "Experiment Type Id",
+            "type": "integer"
+          },
+          "experiment_type_name": {
+            "title": "Experiment Type Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          }
+        },
+        "required": [
+          "experiment_type_id",
+          "experiment_type_name",
+          "status",
+          "verdict",
+          "dispatch_id"
+        ],
+        "title": "RequestSampleExperimentBriefOut",
+        "type": "object"
+      },
       "RequestSampleBriefOut": {
         "description": "Brief sample info nested in request detail responses.\n\nDistinct from ``apps.wip.schemas.SampleBriefOut`` — these two used to share\nthe class name ``SampleBriefOut``, which collided in the OpenAPI component\nregistry (only one survived, silently mistyping the other in the generated\nfrontend client). Keep this name unique.",
         "properties": {
+          "experiments": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RequestSampleExperimentBriefOut"
+            },
+            "title": "Experiments",
+            "type": "array"
+          },
           "experiment_type_ids": {
             "default": [],
             "items": {

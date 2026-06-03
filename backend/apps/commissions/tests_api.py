@@ -18,6 +18,7 @@ from apps.commissions.models import (
     SampleStatus,
 )
 from apps.experiments.factories import ExperimentTypeFactory
+from apps.wip.factories import DispatchFactory, SampleExperimentStatusFactory
 
 
 @pytest.fixture
@@ -460,6 +461,41 @@ class TestRequestDetail:
         resp = client.get(f"/api/requests/{req.pk}", **auth_headers(fab_user))
         assert resp.status_code == 200
         assert resp.json()["urgency"] == "2w"
+
+    def test_request_detail_includes_sample_experiment_progress(
+        self, client, auth_headers, fab_user, experiment_type
+    ):
+        """Each sample row exposes per-wafer experiment completion progress."""
+        req = RequestFactory(requester=fab_user, status=RequestStatus.IN_PROGRESS)
+        RequestExperiment.objects.create(
+            request=req,
+            experiment_type=experiment_type,
+        )
+        sample = SampleFactory(request=req, wafer_id="WF-001")
+        SampleExperiment.objects.create(sample=sample, experiment_type=experiment_type)
+        dispatch = DispatchFactory(experiment_type=experiment_type)
+        SampleExperimentStatusFactory(
+            sample=sample,
+            experiment_type=experiment_type,
+            status="completed",
+            verdict="pass",
+            dispatch=dispatch,
+        )
+
+        resp = client.get(f"/api/requests/{req.pk}", **auth_headers(fab_user))
+
+        assert resp.status_code == 200
+        sample_row = resp.json()["samples"][0]
+        assert sample_row["wafer_id"] == "WF-001"
+        assert sample_row["experiments"] == [
+            {
+                "experiment_type_id": experiment_type.pk,
+                "experiment_type_name": experiment_type.name,
+                "status": "completed",
+                "verdict": "pass",
+                "dispatch_id": dispatch.pk,
+            }
+        ]
 
 
 @pytest.mark.django_db

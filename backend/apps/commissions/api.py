@@ -91,7 +91,11 @@ def _request_detail_queryset() -> models.QuerySet[Request]:
     return Request.objects.select_related("requester__profile").prefetch_related(
         Prefetch(
             "samples",
-            queryset=Sample.objects.prefetch_related("sample_experiments"),
+            queryset=Sample.objects.prefetch_related(
+                "sample_experiments__experiment_type",
+                "experiment_statuses__experiment_type",
+                "experiment_statuses__dispatch",
+            ),
         ),
         Prefetch(
             "request_experiments",
