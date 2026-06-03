@@ -1,0 +1,50 @@
+# Custom postgres_exporter queries for the LIMS local Saturation dashboard.
+#
+# Loaded via PG_EXPORTER_EXTEND_QUERY_PATH / --extend.query-path. These expose
+# the connection-pool and slow-query signals the built-in collectors do not
+# guarantee across exporter versions, with metric names we control so the
+# Grafana panels are never empty due to a renamed default metric.
+#
+# Exported metric = <namespace>_<column>, e.g. lims_pg_activity_max_connections.
+lims_pg_activity:
+  # `master: true` runs this once against the primary connection only.
+  master: true
+  query: |
+    SELECT
+      (SELECT setting::float
+         FROM pg_settings
+        WHERE name = 'max_connections')                                  AS max_connections,
+      (SELECT count(*)::float
+         FROM pg_stat_activity)                                          AS total_connections,
+      (SELECT count(*)::float
+         FROM pg_stat_activity
+        WHERE state = 'active')                                          AS active_connections,
+      (SELECT count(*)::float
+         FROM pg_stat_activity
+        WHERE state = 'idle')                                            AS idle_connections,
+      (SELECT count(*)::float
+         FROM pg_stat_activity
+        WHERE wait_event_type = 'Lock')                                  AS waiting_on_lock,
+      COALESCE((SELECT EXTRACT(EPOCH FROM max(clock_timestamp() - query_start))::float
+                  FROM pg_stat_activity
+                 WHERE state = 'active'
+                   AND backend_type = 'client backend'), 0)              AS longest_active_query_seconds
+  metrics:
+    - max_connections:
+        usage: "GAUGE"
+        description: "Configured Postgres max_connections (the connection ceiling)"
+    - total_connections:
+        usage: "GAUGE"
+        description: "Total backend connections currently open"
+    - active_connections:
+        usage: "GAUGE"
+        description: "Connections currently executing a query"
+    - idle_connections:
+        usage: "GAUGE"
+        description: "Open-but-idle connections (held by CONN_MAX_AGE persistence)"
+    - waiting_on_lock:
+        usage: "GAUGE"
+        description: "Connections blocked waiting on a lock"
+    - longest_active_query_seconds:
+        usage: "GAUGE"
+        description: "Age of the longest-running active query, in seconds (slow-query signal)"
