@@ -25,3 +25,12 @@ scrape_configs:
         labels:
           service: lims-backend
           env: local
+
+  # postgres_exporter — DB-side Saturation signals (connection pool, slow queries).
+  - job_name: postgres
+    static_configs:
+      - targets:
+          - postgres-exporter:9187
+        labels:
+          service: postgres
+          env: local

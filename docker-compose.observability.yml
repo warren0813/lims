@@ -24,6 +24,19 @@ services:
       OTEL_SERVICE_NAME: "lims-backend"
       LOKI_URL: "http://loki:3100/loki/api/v1/push"
       METRICS_ENABLED: "True"
+      # Wrap the DB engine with django-prometheus so /metrics also exposes
+      # django_db_query_duration_seconds (app-side query latency — the slow-query
+      # signal) and django_db_*_connections. Off by default (adds overhead); the
+      # Saturation dashboard wants it, so the observability overlay opts in.
+      METRICS_DB_INSTRUMENT: "True"
+      # Single gunicorn worker for the local stack. django-prometheus keeps its
+      # registry per-process; with multiple workers each holds separate counters
+      # and Prometheus scrapes only whichever worker answers /metrics — so HTTP
+      # counts under-report ~Nx and the django_db_* family is missing on any
+      # worker that has not run a query yet. One worker = one registry = complete,
+      # accurate metrics for the dashboard. (Production scales workers instead and
+      # sets PROMETHEUS_MULTIPROC_DIR + a gunicorn worker-exit hook to aggregate.)
+      WEB_CONCURRENCY: "1"
     depends_on:
       postgres:
         condition: service_healthy
@@ -62,6 +75,24 @@ services:
       - loki-data:/loki
     ports:
       - "127.0.0.1:3100:3100"
+
+  # Scrapes Postgres itself for the Saturation signals the app cannot see:
+  # connection-pool usage vs max_connections, and the longest active query
+  # (slow-query age). Prometheus scrapes it as job `postgres`.
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    environment:
+      DATA_SOURCE_NAME: "postgresql://lims:lims@postgres:5432/lims?sslmode=disable"
+      PG_EXPORTER_EXTEND_QUERY_PATH: "/etc/postgres-exporter/queries.yaml"
+    command:
+      - --extend.query-path=/etc/postgres-exporter/queries.yaml
+    volumes:
+      - ./backend/infra/observability/postgres-exporter-queries.yaml:/etc/postgres-exporter/queries.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:9187:9187"
 
   grafana:
     image: grafana/grafana:11.3.0
