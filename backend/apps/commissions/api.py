@@ -756,7 +756,7 @@ def sample_experiments(request: HttpRequest, sample_id: int):
     """
     # Lazy imports to avoid a top-of-file circular dep: apps.wip
     # already imports from apps.commissions for state-machine helpers.
-    from apps.wip.models import Dispatch, DispatchStatus
+    from apps.wip.models import Dispatch, DispatchStatus, WIPStatus
 
     # Finish any elapsed simulated-machine run first, so the rollup below
     # reads completed dispatches + their rolled verdicts rather than a
@@ -783,6 +783,15 @@ def sample_experiments(request: HttpRequest, sample_id: int):
         ]
 
     sample_wip_ids = list(sample.wips.values_list("pk", flat=True))
+    wip_id_by_et: dict[int, int] = {}
+    active_wips = (
+        sample.wips.filter(status__in=[WIPStatus.CREATED, WIPStatus.IN_PROGRESS])
+        .order_by("experiment_type_id", "-created_at")
+        .values_list("experiment_type_id", "pk")
+    )
+    for experiment_type_id, wip_id in active_wips:
+        wip_id_by_et.setdefault(experiment_type_id, wip_id)
+
     dispatches_by_et: dict[int, list[Dispatch]] = {}
     if sample_wip_ids:
         dispatch_qs = (
@@ -843,6 +852,7 @@ def sample_experiments(request: HttpRequest, sample_id: int):
                 "experiment_type": {"id": et.pk, "name": et.name},
                 "status": status,
                 "verdict": verdicts_by_et.get(et.pk),
+                "wip_id": wip_id_by_et.get(et.pk),
                 "dispatch_id": dispatch_id,
                 "result": result_payload,
             }

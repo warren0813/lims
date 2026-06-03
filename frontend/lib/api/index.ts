@@ -276,6 +276,7 @@ function normalizeSampleExperiments(rows: SampleExperimentsInput) {
     experimentName: r.experiment_type?.name ?? '',
     status: r.status,
     verdict: r.verdict ?? null,
+    wipId: r.wip_id ?? null,
     dispatchId: r.dispatch_id ?? null,
     result: r.result
       ? {

@@ -24,6 +24,7 @@ type ExpRow = {
   group: string;
   status: string;
   verdict: string | null;
+  wipId: number | null;
   dispatchId: number | null;
   result: SampleExperiment['result'];
 };
@@ -91,6 +92,7 @@ const LabWaferDetail = ({
     group: labCategoryById.get(e.experimentTypeId) || '',
     status: e.status,
     verdict: e.verdict,
+    wipId: e.wipId,
     dispatchId: e.dispatchId,
     result: e.result,
   }));
@@ -223,7 +225,11 @@ const LabWaferDetail = ({
                   const done = e.status === 'done';
                   const running = e.status === 'running';
                   const fail = done && e.verdict === 'fail';
-                  const clickable = e.dispatchId != null;
+                  const target = e.dispatchId
+                    ? ({ page: 'lab_dispatch_detail', id: e.dispatchId } as const)
+                    : e.wipId
+                      ? ({ page: 'lab_wip_detail', id: e.wipId } as const)
+                      : null;
                   const bg = fail ? '#fbe4e6' : done ? '#e7f6ec' : running ? '#ecebf3' : '#f4f4f7';
                   const border = fail
                     ? '#f4b4b9'
@@ -244,10 +250,8 @@ const LabWaferDetail = ({
                     <button
                       key={e.id}
                       type="button"
-                      disabled={!clickable}
-                      onClick={() =>
-                        clickable && navigate({ page: 'lab_dispatch_detail', id: e.dispatchId })
-                      }
+                      disabled={!target}
+                      onClick={() => target && navigate(target)}
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -257,7 +261,7 @@ const LabWaferDetail = ({
                         background: bg,
                         border: `1px solid ${border}`,
                         fontFamily: 'inherit',
-                        cursor: clickable ? 'pointer' : 'default',
+                        cursor: target ? 'pointer' : 'default',
                       }}
                     >
                       <span

@@ -77,8 +77,24 @@ test('renders the wafer id, size, and request title once loaded', () => {
 test('lists experiments with a done count when present', () => {
   hook.value.data = data({
     experiments: [
-      { experimentTypeId: 1, experimentName: 'XRD scan', status: 'done', verdict: 'pass', dispatchId: 5, result: null },
-      { experimentTypeId: 2, experimentName: 'SEM imaging', status: 'pending', verdict: null, dispatchId: null, result: null },
+      {
+        experimentTypeId: 1,
+        experimentName: 'XRD scan',
+        status: 'done',
+        verdict: 'pass',
+        wipId: 4,
+        dispatchId: 5,
+        result: null,
+      },
+      {
+        experimentTypeId: 2,
+        experimentName: 'SEM imaging',
+        status: 'pending',
+        verdict: null,
+        wipId: null,
+        dispatchId: null,
+        result: null,
+      },
     ],
   });
   renderWithProviders(<LabWaferDetail id={1} navigate={vi.fn()} />);
@@ -91,12 +107,40 @@ test('clicking a dispatch-linked experiment navigates to that dispatch', () => {
   const navigate = vi.fn();
   hook.value.data = data({
     experiments: [
-      { experimentTypeId: 1, experimentName: 'XRD scan', status: 'running', verdict: null, dispatchId: 9, result: null },
+      {
+        experimentTypeId: 1,
+        experimentName: 'XRD scan',
+        status: 'running',
+        verdict: null,
+        wipId: 7,
+        dispatchId: 9,
+        result: null,
+      },
     ],
   });
   renderWithProviders(<LabWaferDetail id={1} navigate={navigate} />);
   fireEvent.click(screen.getByText('XRD scan'));
   expect(navigate).toHaveBeenCalledWith({ page: 'lab_dispatch_detail', id: 9 });
+});
+
+test('clicking a wip-linked pending experiment navigates to that WIP', () => {
+  const navigate = vi.fn();
+  hook.value.data = data({
+    experiments: [
+      {
+        experimentTypeId: 2,
+        experimentName: 'SEM imaging',
+        status: 'pending',
+        verdict: null,
+        wipId: 12,
+        dispatchId: null,
+        result: null,
+      },
+    ],
+  });
+  renderWithProviders(<LabWaferDetail id={1} navigate={navigate} />);
+  fireEvent.click(screen.getByText('SEM imaging'));
+  expect(navigate).toHaveBeenCalledWith({ page: 'lab_wip_detail', id: 12 });
 });
 
 test('incoming wafer receive action calls api.samples.receive then refreshes', async () => {

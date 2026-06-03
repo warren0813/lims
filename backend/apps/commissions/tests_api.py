@@ -1199,6 +1199,10 @@ class TestSampleExperimentsRollup:
         )
         WIPSample.objects.create(wip=wip_in_progress, sample=sample)
 
+        # Build a WIP for the pending experiment, but leave it undispatched.
+        wip_pending = WIPFactory(experiment_type=et_pending, status=WIPStatus.CREATED)
+        WIPSample.objects.create(wip=wip_pending, sample=sample)
+
         # And another WIP for the done experiment.
         wip_done = WIPFactory(experiment_type=et_done, status=WIPStatus.IN_PROGRESS)
         WIPSample.objects.create(wip=wip_done, sample=sample)
@@ -1214,6 +1218,7 @@ class TestSampleExperimentsRollup:
             "et_in_progress": et_in_progress,
             "et_done": et_done,
             "equipment": equipment,
+            "wip_pending": wip_pending,
             "wip_in_progress": wip_in_progress,
             "wip_done": wip_done,
             "recipes": recipes,
@@ -1268,16 +1273,19 @@ class TestSampleExperimentsRollup:
 
         assert rows["ET-PENDING"]["status"] == "pending"
         assert rows["ET-PENDING"]["verdict"] is None
+        assert rows["ET-PENDING"]["wip_id"] == ctx["wip_pending"].pk
         assert rows["ET-PENDING"]["dispatch_id"] is None
         assert rows["ET-PENDING"]["result"] is None
 
         assert rows["ET-IN-PROGRESS"]["status"] == "in_progress"
         assert rows["ET-IN-PROGRESS"]["verdict"] is None
+        assert rows["ET-IN-PROGRESS"]["wip_id"] == ctx["wip_in_progress"].pk
         assert rows["ET-IN-PROGRESS"]["dispatch_id"] is not None
         assert rows["ET-IN-PROGRESS"]["result"] is None
 
         assert rows["ET-DONE"]["status"] == "done"
         assert rows["ET-DONE"]["verdict"] == "pass"
+        assert rows["ET-DONE"]["wip_id"] == ctx["wip_done"].pk
         assert rows["ET-DONE"]["dispatch_id"] == done_dispatch.pk
         assert rows["ET-DONE"]["result"]["comment"] == "OK"
 
