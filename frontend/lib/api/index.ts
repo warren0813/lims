@@ -109,6 +109,13 @@ type NormalizedSampleBrief = {
   size: string;
   status: string;
   raw_status: string;
+  experiments?: {
+    experimentTypeId: number;
+    experimentName: string;
+    status: string;
+    verdict: string | null;
+    dispatchId: number | null;
+  }[];
 };
 
 type NormalizedApprovalLog = {
@@ -239,6 +246,13 @@ function normalizeRequestDetail(r: RequestDetailInput) {
       status: SAMPLE_STATUS_MAP[s.status] || s.status,
       raw_status: s.status,
       expIds: s.experiment_type_ids || [],
+      experiments: (s.experiments || []).map((e) => ({
+        experimentTypeId: e.experiment_type_id,
+        experimentName: e.experiment_type_name,
+        status: e.status,
+        verdict: e.verdict ?? null,
+        dispatchId: e.dispatch_id ?? null,
+      })),
     })),
     history: (r.approval_logs || []).map((log) => ({
       action: log.action.toUpperCase(),

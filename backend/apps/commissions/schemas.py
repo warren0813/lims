@@ -32,6 +32,16 @@ class ExperimentTypeWithParamsOut(Schema):
     parameters: dict[str, Any]
 
 
+class RequestSampleExperimentBriefOut(Schema):
+    """Per-sample experiment progress nested in request detail responses."""
+
+    experiment_type_id: int
+    experiment_type_name: str
+    status: str
+    verdict: str | None
+    dispatch_id: int | None
+
+
 class RequestSampleBriefOut(Schema):
     """Brief sample info nested in request detail responses.
 
@@ -46,6 +56,7 @@ class RequestSampleBriefOut(Schema):
     wafer_size: str
     status: str
     experiment_type_ids: list[int] = []
+    experiments: list[RequestSampleExperimentBriefOut] = []
 
 
 class ApprovalLogOut(Schema):
@@ -212,18 +223,39 @@ class RequestDetailOut(Schema):
                 }
             )
 
-        samples = [
-            {
-                "id": s.pk,
-                "wafer_id": s.wafer_id,
-                "wafer_size": s.wafer_size,
-                "status": s.status,
-                "experiment_type_ids": [
-                    se.experiment_type_id for se in s.sample_experiments.all()
-                ],
+        samples = []
+        for sample in req.samples.all():
+            sample_experiments = list(sample.sample_experiments.all())
+            statuses_by_experiment = {
+                row.experiment_type_id: row for row in sample.experiment_statuses.all()
             }
-            for s in req.samples.all()
-        ]
+            experiment_rows = []
+            for sample_experiment in sample_experiments:
+                status_row = statuses_by_experiment.get(
+                    sample_experiment.experiment_type_id
+                )
+                experiment_rows.append(
+                    {
+                        "experiment_type_id": sample_experiment.experiment_type_id,
+                        "experiment_type_name": sample_experiment.experiment_type.name,
+                        "status": status_row.status if status_row else "pending",
+                        "verdict": status_row.verdict if status_row else None,
+                        "dispatch_id": status_row.dispatch_id if status_row else None,
+                    }
+                )
+
+            samples.append(
+                {
+                    "id": sample.pk,
+                    "wafer_id": sample.wafer_id,
+                    "wafer_size": sample.wafer_size,
+                    "status": sample.status,
+                    "experiment_type_ids": [
+                        se.experiment_type_id for se in sample_experiments
+                    ],
+                    "experiments": experiment_rows,
+                }
+            )
 
         approval_logs = []
         for log in req.approval_logs.all():

@@ -1877,6 +1877,22 @@ export interface components {
             urgency: string;
         };
         /**
+         * RequestSampleExperimentBriefOut
+         * @description Per-sample experiment progress nested in request detail responses.
+         */
+        RequestSampleExperimentBriefOut: {
+            /** Dispatch Id */
+            dispatch_id: number | null;
+            /** Experiment Type Id */
+            experiment_type_id: number;
+            /** Experiment Type Name */
+            experiment_type_name: string;
+            /** Status */
+            status: string;
+            /** Verdict */
+            verdict: string | null;
+        };
+        /**
          * RequestSampleBriefOut
          * @description Brief sample info nested in request detail responses.
          *
@@ -1886,6 +1902,11 @@ export interface components {
          *     frontend client). Keep this name unique.
          */
         RequestSampleBriefOut: {
+            /**
+             * Experiments
+             * @default []
+             */
+            experiments: components["schemas"]["RequestSampleExperimentBriefOut"][];
             /**
              * Experiment Type Ids
              * @default []
