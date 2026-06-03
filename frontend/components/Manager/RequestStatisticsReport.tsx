@@ -42,6 +42,14 @@ const formatTat = (hours: number | null) => {
   return `${(hours / 24).toFixed(1)}d`;
 };
 
+const formatCompletionRate = (stats: RequestStatistics) => {
+  const completed =
+    (stats.status_distribution.completed || 0) + (stats.status_distribution.closed || 0);
+  if (!stats.total_requests) return '0 / 0 (0%)';
+  const pct = (completed / stats.total_requests) * 100;
+  return `${completed} / ${stats.total_requests} (${pct.toFixed(pct < 10 && pct > 0 ? 1 : 0)}%)`;
+};
+
 const formatDateTime = (iso: string | null) => {
   if (!iso) return '-';
   const d = new Date(iso);
@@ -159,12 +167,13 @@ const RequestStatisticsReport = () => {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(2, minmax(160px, 220px))',
+                gridTemplateColumns: 'repeat(3, minmax(160px, 220px))',
                 gap: 12,
                 marginBottom: 14,
               }}
             >
               <SummaryBox label="Total Requests" value={stats.total_requests} />
+              <SummaryBox label="Completion Rate" value={formatCompletionRate(stats)} />
               <SummaryBox label="Average TAT" value={formatTat(stats.average_tat_hours)} />
             </div>
             <div>

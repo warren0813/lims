@@ -109,6 +109,14 @@ type NormalizedSampleBrief = {
   size: string;
   status: string;
   raw_status: string;
+  expIds: number[];
+  experiments?: {
+    experimentTypeId: number;
+    experimentName: string;
+    status: string;
+    verdict: string | null;
+    dispatchId: number | null;
+  }[];
 };
 
 type NormalizedApprovalLog = {
@@ -232,14 +240,26 @@ function normalizeRequestDetail(r: RequestDetailInput) {
     ...normalizeRequestRow(r),
     expIds: (r.experiment_types || []).map((et) => et.id),
     experiment_types: r.experiment_types || [],
-    samples: (r.samples || []).map((s) => ({
-      id: s.id,
-      wafer: s.wafer_id,
-      size: s.wafer_size,
-      status: SAMPLE_STATUS_MAP[s.status] || s.status,
-      raw_status: s.status,
-      expIds: s.experiment_type_ids || [],
-    })),
+    samples: (r.samples || []).map((s) => {
+      const sample = {
+        id: s.id,
+        wafer: s.wafer_id,
+        size: s.wafer_size,
+        status: SAMPLE_STATUS_MAP[s.status] || s.status,
+        raw_status: s.status,
+        expIds: s.experiment_type_ids || [],
+      } as NormalizedSampleBrief;
+      if (s.experiments) {
+        sample.experiments = s.experiments.map((e) => ({
+          experimentTypeId: e.experiment_type_id,
+          experimentName: e.experiment_type_name,
+          status: e.status,
+          verdict: e.verdict ?? null,
+          dispatchId: e.dispatch_id ?? null,
+        }));
+      }
+      return sample;
+    }),
     history: (r.approval_logs || []).map((log) => ({
       action: log.action.toUpperCase(),
       by: log.reviewer?.username,
