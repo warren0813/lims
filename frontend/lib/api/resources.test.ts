@@ -617,10 +617,11 @@ test('samples.getExperiments normalizes the rollup rows', async () => {
         experiment_type: { id: 9, name: 'Etch' },
         status: 'completed',
         verdict: 'pass',
+        wip_id: 40,
         dispatch_id: 50,
         result: { id: 70, comment: 'good', created_at: '2026-01-02T03:04:00Z' },
       },
-      { status: 'pending' },
+      { status: 'pending', wip_id: 41 },
     ]),
   );
   const out = await api.samples.getExperiments(3);
@@ -631,10 +632,17 @@ test('samples.getExperiments normalizes the rollup rows', async () => {
     experimentName: 'Etch',
     status: 'completed',
     verdict: 'pass',
+    wipId: 40,
     dispatchId: 50,
   });
   expect(out[0].result).toMatchObject({ id: 70, comment: 'good' });
-  expect(out[1]).toMatchObject({ experimentTypeId: null, experimentName: '', result: null });
+  expect(out[1]).toMatchObject({
+    experimentTypeId: null,
+    experimentName: '',
+    wipId: 41,
+    dispatchId: null,
+    result: null,
+  });
 });
 
 test('samples.receive POSTs to /receive', async () => {

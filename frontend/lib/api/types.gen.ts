@@ -2081,6 +2081,8 @@ export interface components {
             status: string;
             /** Verdict */
             verdict: string | null;
+            /** Wip Id */
+            wip_id: number | null;
         };
         /**
          * SampleExperimentStatusOut

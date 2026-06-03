@@ -373,6 +373,7 @@ class SampleExperimentRollupOut(Schema):
     experiment_type: ExperimentTypeBrief
     status: str
     verdict: str | None
+    wip_id: int | None
     dispatch_id: int | None
     result: ExperimentResultBrief | None
 
