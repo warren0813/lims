@@ -16,6 +16,26 @@ type WaferResult = {
 };
 type Recipe = Awaited<ReturnType<typeof api.recipes.list>>[number];
 
+const fetchSampleRollup = (s: SampleBrief) =>
+  api.samples
+    .getExperiments(s.id)
+    .then((rows: SampleExperiment[]) => ({ sample: s, rows }))
+    .catch((): { sample: SampleBrief; rows: SampleExperiment[] } => ({ sample: s, rows: [] }));
+
+const toWaferResult = (
+  { sample, rows }: { sample: SampleBrief; rows: SampleExperiment[] },
+  dispatchId: number,
+): WaferResult => {
+  const match = rows.find((r: SampleExperiment) => r.dispatchId === dispatchId);
+  return {
+    sampleId: sample.id,
+    wafer: sample.wafer,
+    size: sample.size,
+    verdict: match?.verdict ?? null,
+    status: match?.status ?? null,
+  };
+};
+
 const useLabDispatchDetail = (id: number | string | null | undefined) => {
   const [d, setD] = React.useState<Dispatch | null>(null);
   const [recipeById, setRecipeById] = React.useState<Map<number | string, Recipe>>(new Map());
@@ -41,30 +61,9 @@ const useLabDispatchDetail = (id: number | string | null | undefined) => {
         const wip = await api.wips.get(dp.wipId).catch((): WipDetail | null => null);
         if (cancelled) return;
         const samples: SampleBrief[] = wip?.samples || [];
-        const rollups = await Promise.all(
-          samples.map((s: SampleBrief) =>
-            api.samples
-              .getExperiments(s.id)
-              .then((rows: SampleExperiment[]) => ({ sample: s, rows }))
-              .catch((): { sample: SampleBrief; rows: SampleExperiment[] } => ({
-                sample: s,
-                rows: [],
-              })),
-          ),
-        );
+        const rollups = await Promise.all(samples.map(fetchSampleRollup));
         if (cancelled) return;
-        const wafers = rollups.map(
-          ({ sample, rows }: { sample: SampleBrief; rows: SampleExperiment[] }) => {
-            const match = rows.find((r: SampleExperiment) => r.dispatchId === dp.id);
-            return {
-              sampleId: sample.id,
-              wafer: sample.wafer,
-              size: sample.size,
-              verdict: match?.verdict ?? null,
-              status: match?.status ?? null,
-            };
-          },
-        );
+        const wafers = rollups.map((r) => toWaferResult(r, dp.id));
         setWaferResults(wafers);
         setError(null);
       } catch (e) {

@@ -443,7 +443,9 @@ const FabDashboard = ({ navigate }: { navigate: Navigate }) => {
               const day = a.at.split(' ')[0];
               (groups[day] = groups[day] || []).push(a);
             });
-            const days = Object.keys(groups).sort().reverse();
+            const days = Object.keys(groups)
+              .sort((a, b) => a.localeCompare(b))
+              .reverse();
             return (
               <div style={{ position: 'relative' }}>
                 {}
